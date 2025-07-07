@@ -172,15 +172,22 @@ def is_pareto_efficient(costs):
     Returns:
         np.ndarray: A boolean array indicating which points are Pareto efficient
     """
+
+    # Efficient set is defined as the set of points that are not dominated by any other point
     is_efficient = np.arange(costs.shape[0])
     n_points = costs.shape[0]
     next_point_index = 0
 
+    # Iterate through each point and check if it is dominated by any other point
     while next_point_index < len(costs):
+        # Check if the current point is dominated by any other point
         nondominated_point_mask = np.any(costs < costs[next_point_index], axis=1)
         nondominated_point_mask[next_point_index] = True
+        # If the current point is dominated by any other point, remove it from the efficient set
         is_efficient = is_efficient[nondominated_point_mask]
         costs = costs[nondominated_point_mask]
+
+        # Move to the next point
         next_point_index = np.sum(nondominated_point_mask[:next_point_index]) + 1
 
     is_efficient_mask = np.zeros(n_points, dtype=bool)
