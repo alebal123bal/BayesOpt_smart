@@ -50,12 +50,8 @@ def compute_k_star(x_vector, x_star, sigma, length_scale=1.0):
         sigma (float): Standard deviation for the kernel.
         length_scale (float): Length scale parameter for the kernel.
 
-
-
     Returns:
-
         np.ndarray: Kernel vector between training points and the new point.
-
     """
 
     return np.array([rbf_kernel(x, x_star, sigma, length_scale) for x in x_vector])
@@ -63,13 +59,9 @@ def compute_k_star(x_vector, x_star, sigma, length_scale=1.0):
 
 def compute_k(x_vector, sigma, length_scale=1.0):
     """
-
     Compute the kernel matrix for the training points.
 
-
-
     Args:
-
         x_vector (np.ndarray): Training points.
         sigma (float): Standard deviation for the kernel.
         length_scale (float): Length scale parameter for the kernel.
@@ -91,7 +83,6 @@ def compute_k(x_vector, sigma, length_scale=1.0):
 
 def compute_delta_mu(k_star, kernel_matrix, y_vector, prior_mean):
     """
-
     Update the mean of the Gaussian process at a new point.
 
     Args:
@@ -146,9 +137,7 @@ def upper_confidence_bound(mu, variance, beta=2.0):
 
 class BayesianOptimization:
     """
-
     A class for Bayesian optimization.
-
     """
 
     def __init__(
