@@ -199,8 +199,7 @@ class MultiObjectiveBayesianOptimization:
         bounds,
         n_objectives=3,
         n_iterations=10,
-        prior_mean=0.0,
-        prior_variance=1.0,
+        **kwargs,
     ):
         """
         Initialize the Multi-Objective Bayesian optimization class.
@@ -210,16 +209,14 @@ class MultiObjectiveBayesianOptimization:
             bounds (tuple): The bounds for the input variable (min, max).
             n_objectives (int): Number of objectives.
             n_iterations (int): The number of iterations for the optimization.
-            prior_mean (float): The prior mean for the Gaussian process.
-            prior_variance (float): The prior variance for the Gaussian process.
         """
 
         self.function = function
         self.bounds = bounds
         self.n_objectives = n_objectives
         self.n_iterations = n_iterations
-        self.prior_mean = prior_mean
-        self.prior_variance = prior_variance
+        self.prior_mean = kwargs.get("prior_mean", [0.0] * n_objectives)
+        self.prior_variance = kwargs.get("prior_variance", [1.0] * n_objectives)
 
         # Dimensionality of the input space
         self.dim = len(bounds)
@@ -240,18 +237,18 @@ class MultiObjectiveBayesianOptimization:
 
         # Mean for each objective's Gaussian process
         self.mu_objectives = [
-            np.array([self.prior_mean] * self.input_space.shape[0]).reshape(
+            np.array([self.prior_mean[obj_idx]] * self.input_space.shape[0]).reshape(
                 (self.input_space.shape[0], 1)
             )
-            for _ in range(n_objectives)
+            for obj_idx in range(n_objectives)
         ]
 
         # Variance for each objective's Gaussian process
         self.variance_objectives = [
-            np.array([self.prior_variance] * self.input_space.shape[0]).reshape(
-                (self.input_space.shape[0], 1)
-            )
-            for _ in range(n_objectives)
+            np.array(
+                [self.prior_variance[obj_idx]] * self.input_space.shape[0]
+            ).reshape((self.input_space.shape[0], 1))
+            for obj_idx in range(n_objectives)
         ]
 
         # Preallocate acquisition function values for each point
@@ -286,7 +283,7 @@ class MultiObjectiveBayesianOptimization:
                     : self.n_evaluations, : self.n_evaluations
                 ] = compute_k(
                     self.x_vector[: self.n_evaluations],
-                    sigma=np.sqrt(self.prior_variance),
+                    sigma=np.sqrt(self.prior_variance[obj_idx]),
                     length_scale=3.0,
                 )
 
@@ -295,10 +292,11 @@ class MultiObjectiveBayesianOptimization:
                 k_star = compute_k_star(
                     x_vector=self.x_vector[: self.n_evaluations],
                     x_star=x_star,
-                    sigma=np.sqrt(self.prior_variance),
+                    sigma=np.sqrt(self.prior_variance[obj_idx]),
                     length_scale=3.0,
                 )
 
+                # Initialize mean and variance predictions for each objective
                 mu_pred = np.zeros(self.n_objectives, dtype=np.float64)
                 var_pred = np.zeros(self.n_objectives, dtype=np.float64)
 
@@ -311,10 +309,12 @@ class MultiObjectiveBayesianOptimization:
                             : self.n_evaluations, : self.n_evaluations
                         ],
                         y_vector=self.y_vector[: self.n_evaluations, obj_idx],
-                        prior_mean=self.prior_mean,
+                        prior_mean=self.prior_mean[obj_idx],
                     )
 
-                    self.mu_objectives[obj_idx][i] = self.prior_mean + delta_mu.item()
+                    self.mu_objectives[obj_idx][i] = (
+                        self.prior_mean[obj_idx] + delta_mu.item()
+                    )
                     mu_pred[obj_idx] = self.mu_objectives[obj_idx][i].item()
 
                     # Update variance
@@ -326,7 +326,7 @@ class MultiObjectiveBayesianOptimization:
                     )
 
                     self.variance_objectives[obj_idx][i] = (
-                        self.prior_variance + delta_variance.item()
+                        self.prior_variance[obj_idx] + delta_variance.item()
                     )
                     var_pred[obj_idx] = self.variance_objectives[obj_idx][i].item()
 
@@ -386,8 +386,8 @@ if __name__ == "__main__":
         _bounds,
         n_objectives=3,
         n_iterations=20,
-        prior_mean=50.0,
-        prior_variance=400.0,
+        prior_mean=[50] * 3,
+        prior_variance=[400.0] * 3,
     )
 
     optimizer.optimize()

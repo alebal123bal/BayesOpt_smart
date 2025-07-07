@@ -16,6 +16,22 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "stopOnEntry": false
+        },
+        {
+            "name": "Debug BayesMOO",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "bayesian_moo",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run BayesMOO",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "bayesian_moo",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "stopOnEntry": false
         }
     ]
 }
