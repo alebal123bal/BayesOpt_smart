@@ -150,6 +150,8 @@ class BayesianOptimization:
             function (callable): The function to optimize.
             bounds (tuple): The bounds for the input variable (min, max).
             n_iterations (int): The number of iterations for the optimization.
+            prior_mean (float): The prior mean for the Gaussian process.
+            prior_variance (float): The prior variance for the Gaussian process.
         """
 
         self.function = function
@@ -168,16 +170,17 @@ class BayesianOptimization:
 
         # Preallocate the function evaluations
         self.x_vector = np.zeros((n_iterations, self.dim))
-        self.y_vector = np.zeros((n_iterations, 1))  # Assuming single output function
+        self.y_vector = np.zeros((n_iterations, 1))  # Assuming single objective
 
         # Preallocate the kernel matrix
         self.kernel_matrix = np.empty((n_iterations, n_iterations))
 
-        # mean and variance for the Gaussian process
+        # Mean for the Gaussian process
         self.mu = np.array([self.prior_mean] * self.input_space.shape[0]).reshape(
             (self.input_space.shape[0], 1)
         )
 
+        # Variance for the Gaussian process
         self.variance = np.array(
             [self.prior_variance] * self.input_space.shape[0]
         ).reshape((self.input_space.shape[0], 1))
