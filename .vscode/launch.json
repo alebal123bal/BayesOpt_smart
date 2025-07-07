@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Bayes",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "bayesian_optimization",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run Bayes",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "bayesian_optimization",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "stopOnEntry": false
+        }
+    ]
+}
