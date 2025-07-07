@@ -178,8 +178,8 @@ class BayesianOptimization:
         self.input_space = np.stack([m.ravel() for m in mesh], axis=-1)
 
         # Preallocate the function evaluations
-        self.X = np.zeros((n_iterations, self.dim))
-        self.Y = np.zeros((n_iterations, 1))  # Assuming single output function
+        self.x_vector = np.zeros((n_iterations, self.dim))
+        self.y_vector = np.zeros((n_iterations, 1))  # Assuming single output function
 
         # Preallocate the kernel matrix
         self.kernel_matrix = np.empty((n_iterations, n_iterations))
@@ -199,40 +199,35 @@ class BayesianOptimization:
         )
 
         # Initial guesses
-        self.X[0] = np.array([5.0] * self.dim)
-        self.Y[0] = self.function(self.X[0])
+        self.x_vector[0] = np.array([5.0] * self.dim)
+        self.y_vector[0] = self.function(self.x_vector[0])
 
-        self.X[1] = np.array([10.0] * self.dim)
-        self.Y[1] = self.function(self.X[1])
+        self.x_vector[1] = np.array([10.0] * self.dim)
+        self.y_vector[1] = self.function(self.x_vector[1])
 
-        self.X[2] = np.array([15.0] * self.dim)
-        self.Y[2] = self.function(self.X[2])
+        self.x_vector[2] = np.array([15.0] * self.dim)
+        self.y_vector[2] = self.function(self.x_vector[2])
 
         # Keep track of the number of evaluations
         self.n_evaluations = 3
 
     def optimize(self):
         """
-
         Perform the Bayesian optimization.
-
         """
 
         for f in range(3, self.n_iterations):
-
             # Compute the kernel matrix for the current evaluations
-
             self.kernel_matrix[: self.n_evaluations, : self.n_evaluations] = compute_k(
-                self.X[: self.n_evaluations],
+                self.x_vector[: self.n_evaluations],
                 sigma=np.sqrt(self.prior_variance),
                 length_scale=3.0,
             )
 
             for i, x_star in enumerate(self.input_space):
-
                 # Compute the kernel vector for the new point
                 k_star = compute_k_star(
-                    x_vector=self.X[: self.n_evaluations],
+                    x_vector=self.x_vector[: self.n_evaluations],
                     x_star=x_star,
                     sigma=np.sqrt(self.prior_variance),
                     length_scale=3.0,
@@ -244,7 +239,7 @@ class BayesianOptimization:
                     kernel_matrix=self.kernel_matrix[
                         : self.n_evaluations, : self.n_evaluations
                     ],
-                    y_vector=self.Y[: self.n_evaluations],
+                    y_vector=self.y_vector[: self.n_evaluations],
                     prior_mean=self.prior_mean,
                 )
 
@@ -263,7 +258,6 @@ class BayesianOptimization:
                 self.variance[i] = self.prior_variance + delta_variance.item()
 
                 # Compute the upper confidence bound
-
                 self.ucb[i] = upper_confidence_bound(
                     mu=self.mu[i],
                     variance=self.variance[i],
@@ -274,11 +268,12 @@ class BayesianOptimization:
             x_next = self.input_space[np.argmax(self.ucb)]
 
             # Check if x_next is in self.X[:self.n_evaluations]
-            if not np.any(np.all(self.X[: self.n_evaluations] == x_next, axis=1)):
-
+            if not np.any(
+                np.all(self.x_vector[: self.n_evaluations] == x_next, axis=1)
+            ):
                 # Evaluate the function at the new point
-                self.X[f] = x_next
-                self.Y[f] = self.function(x_next)
+                self.x_vector[f] = x_next
+                self.y_vector[f] = self.function(x_next)
 
                 # Increment the number of evaluations
                 self.n_evaluations += 1
@@ -292,18 +287,17 @@ class BayesianOptimization:
         print("Final results:")
 
         for i in range(self.n_iterations):
-            print(f"x = {self.X[i]}, f(x) = {self.Y[i]}")
+            print(f"x = {self.x_vector[i]}, f(x) = {self.y_vector[i]}")
 
         # Max value found
-        max_index = np.argmax(self.Y[: self.n_iterations])
-        max_x = self.X[max_index]
-        max_y = self.Y[max_index]
+        max_index = np.argmax(self.y_vector[: self.n_iterations])
+        max_x = self.x_vector[max_index]
+        max_y = self.y_vector[max_index]
 
         print(f"Maximum value found: f({max_x}) = {max_y}")
 
 
 if __name__ == "__main__":
-
     # Example usage
     _bounds = [
         (0, X_MAX),
