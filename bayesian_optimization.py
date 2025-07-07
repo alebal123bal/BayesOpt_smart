@@ -40,12 +40,12 @@ def rbf_kernel(x1, x2, sigma, length_scale=1.0):
     return sigma**2 * np.exp(-0.5 * distance_squared / length_scale**2)
 
 
-def compute_k_star(X, x_star, sigma, length_scale=1.0):
+def compute_k_star(x_vector, x_star, sigma, length_scale=1.0):
     """
     Compute the kernel vector between the training points and a new point.
 
     Args:
-        X (np.ndarray): Training points.
+        x_vector (np.ndarray): Training points.
         x_star (float): New point.
         sigma (float): Standard deviation for the kernel.
         length_scale (float): Length scale parameter for the kernel.
@@ -58,10 +58,10 @@ def compute_k_star(X, x_star, sigma, length_scale=1.0):
 
     """
 
-    return np.array([rbf_kernel(x, x_star, sigma, length_scale) for x in X])
+    return np.array([rbf_kernel(x, x_star, sigma, length_scale) for x in x_vector])
 
 
-def compute_k(X, sigma, length_scale=1.0):
+def compute_k(x_vector, sigma, length_scale=1.0):
     """
 
     Compute the kernel matrix for the training points.
@@ -70,114 +70,75 @@ def compute_k(X, sigma, length_scale=1.0):
 
     Args:
 
-        X (np.ndarray): Training points.
-
+        x_vector (np.ndarray): Training points.
         sigma (float): Standard deviation for the kernel.
-
         length_scale (float): Length scale parameter for the kernel.
 
-
-
     Returns:
-
         np.ndarray: Kernel matrix for the training points.
-
     """
 
-    n = len(X)
-
-    K = np.zeros((n, n))
-
+    n = len(x_vector)
+    kernel_matrix = np.zeros((n, n))
     for i in range(n):
-
         for j in range(n):
+            kernel_matrix[i, j] = rbf_kernel(
+                x_vector[i], x_vector[j], sigma, length_scale
+            )
 
-            K[i, j] = rbf_kernel(X[i], X[j], sigma, length_scale)
-
-    return K
+    return kernel_matrix
 
 
-def compute_delta_mu(k_star, K, Y, prior_mean):
+def compute_delta_mu(k_star, kernel_matrix, y_vector, prior_mean):
     """
 
     Update the mean of the Gaussian process at a new point.
 
-
-
     Args:
-
         k_star (np.ndarray): Kernel vector for the new point.
-
-        Y (np.ndarray): Function values at the training points.
-
-        K (np.ndarray): Kernel matrix for the training points.
-
+        y_vector (np.ndarray): Function values at the training points.
+        kernel_matrix (np.ndarray): Kernel matrix for the training points.
         prior_mean (float): Prior mean of the Gaussian process.
 
-
-
     Returns:
-
         float: Delta mean at the new point to be added to precomputed vector.
-
     """
 
-    K_inv = np.linalg.inv(K)
-
-    mu = k_star.T @ K_inv @ (Y - prior_mean)
+    kernel_matrix_inv = np.linalg.inv(kernel_matrix)
+    mu = k_star.T @ kernel_matrix_inv @ (y_vector - prior_mean)
 
     return mu
 
 
-def compute_delta_variance(k_star, K):
+def compute_delta_variance(k_star, kernel_matrix):
     """
-
     Update the variance of the Gaussian process at a new point.
 
-
-
     Args:
-
         k_star (np.ndarray): Kernel vector for the new point.
-
-        K (np.ndarray): Kernel matrix for the training points.
-
-
+        kernel_matrix (np.ndarray): Kernel matrix for the training points.
 
     Returns:
-
         float: Delta variance at the new point to be added to precomputed vector.
-
     """
 
-    K_inv = np.linalg.inv(K)
-
-    variance = -k_star.T @ K_inv @ k_star
+    kernel_matrix_inv = np.linalg.inv(kernel_matrix)
+    variance = -k_star.T @ kernel_matrix_inv @ k_star
 
     return np.array(variance)
 
 
 def upper_confidence_bound(mu, variance, beta=2.0):
     """
-
     Compute the upper confidence bound for a Gaussian process.
 
-
-
     Args:
-
         mu (float): Mean of the Gaussian process at a point.
-
         variance (float): Variance of the Gaussian process at a point.
-
         beta (float): Exploration-exploitation trade-off parameter.
 
-
-
     Returns:
-
         float: Upper confidence bound value.
-
     """
 
     return mu + beta * np.sqrt(variance)
@@ -194,55 +155,36 @@ class BayesianOptimization:
         self, function, bounds, n_iterations=10, prior_mean=0.0, prior_variance=1.0
     ):
         """
-
         Initialize the Bayesian optimization class.
 
-
-
         Args:
-
             function (callable): The function to optimize.
-
             bounds (tuple): The bounds for the input variable (min, max).
-
             n_iterations (int): The number of iterations for the optimization.
-
         """
 
         self.function = function
-
         self.bounds = bounds
-
         self.n_iterations = n_iterations
-
         self.prior_mean = prior_mean
-
         self.prior_variance = prior_variance
 
         # Dimensionality of the input space
-
         self.dim = len(bounds)
 
         # Preallocate the input space as a unique array of cartesian points
-
         ranges = [np.arange(b[0], b[1]) for b in bounds]
-
         mesh = np.meshgrid(*ranges, indexing="ij")
-
         self.input_space = np.stack([m.ravel() for m in mesh], axis=-1)
 
         # Preallocate the function evaluations
-
         self.X = np.zeros((n_iterations, self.dim))
-
         self.Y = np.zeros((n_iterations, 1))  # Assuming single output function
 
         # Preallocate the kernel matrix
-
-        self.K = np.empty((n_iterations, n_iterations))
+        self.kernel_matrix = np.empty((n_iterations, n_iterations))
 
         # mean and variance for the Gaussian process
-
         self.mu = np.array([self.prior_mean] * self.input_space.shape[0]).reshape(
             (self.input_space.shape[0], 1)
         )
@@ -252,13 +194,11 @@ class BayesianOptimization:
         ).reshape((self.input_space.shape[0], 1))
 
         # Preallocate UCB values for each point
-
         self.ucb = np.array([0.0] * self.input_space.shape[0]).reshape(
             (self.input_space.shape[0], 1)
         )
 
         # Initial guesses
-
         self.X[0] = np.array([5.0] * self.dim)
         self.Y[0] = self.function(self.X[0])
 
@@ -283,7 +223,7 @@ class BayesianOptimization:
 
             # Compute the kernel matrix for the current evaluations
 
-            self.K[: self.n_evaluations, : self.n_evaluations] = compute_k(
+            self.kernel_matrix[: self.n_evaluations, : self.n_evaluations] = compute_k(
                 self.X[: self.n_evaluations],
                 sigma=np.sqrt(self.prior_variance),
                 length_scale=3.0,
@@ -293,7 +233,7 @@ class BayesianOptimization:
 
                 # Compute the kernel vector for the new point
                 k_star = compute_k_star(
-                    X=self.X[: self.n_evaluations],
+                    x_vector=self.X[: self.n_evaluations],
                     x_star=x_star,
                     sigma=np.sqrt(self.prior_variance),
                     length_scale=3.0,
@@ -302,8 +242,10 @@ class BayesianOptimization:
                 # Update mean
                 delta_mu = compute_delta_mu(
                     k_star=k_star,
-                    K=self.K[: self.n_evaluations, : self.n_evaluations],
-                    Y=self.Y[: self.n_evaluations],
+                    kernel_matrix=self.kernel_matrix[
+                        : self.n_evaluations, : self.n_evaluations
+                    ],
+                    y_vector=self.Y[: self.n_evaluations],
                     prior_mean=self.prior_mean,
                 )
 
@@ -313,7 +255,9 @@ class BayesianOptimization:
                 # Update variance
                 delta_variance = compute_delta_variance(
                     k_star=k_star,
-                    K=self.K[: self.n_evaluations, : self.n_evaluations],
+                    kernel_matrix=self.kernel_matrix[
+                        : self.n_evaluations, : self.n_evaluations
+                    ],
                 )
 
                 # Sum the calculated variance
