@@ -209,7 +209,6 @@ class BayesianOptimization:
         self.Y[2] = self.function(self.X[2])
 
         # Keep track of the number of evaluations
-
         self.n_evaluations = 3
 
     def optimize(self):
@@ -306,7 +305,6 @@ class BayesianOptimization:
 if __name__ == "__main__":
 
     # Example usage
-
     _bounds = [
         (0, X_MAX),
         (0, Y_MAX),
