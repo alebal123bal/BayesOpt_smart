@@ -296,7 +296,7 @@ def optimize(
     Returns:
         Updated `x_vector` and `y_vector` after optimization.
     """
-    for f in range(3, n_iterations):  # pylint: disable=unused-variable
+    for f in range(n_evaluations, n_iterations):  # pylint: disable=unused-variable
         if DEBUG_MODE:
             print(f"🔄 Debug: Starting iteration {f}, n_evaluations={n_evaluations}")
 
