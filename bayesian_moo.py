@@ -6,8 +6,8 @@ import time
 import numpy as np
 from numba import njit
 
-X_MAX = 200
-Y_MAX = 200
+X_MAX = 20
+Y_MAX = 20
 
 
 @njit
@@ -96,22 +96,30 @@ def compute_k(x_vector, sigma, length_scale=1.0):
     return kernel_matrix
 
 
+@njit
 def compute_delta_mu(k_star, kernel_matrix, y_vector, prior_mean):
     """
     Update the mean of the Gaussian process at a new point.
 
     Args:
         k_star (np.ndarray): Kernel vector for the new point.
-        y_vector (np.ndarray): Function values at the training points.
         kernel_matrix (np.ndarray): Kernel matrix for the training points.
+        y_vector (np.ndarray): Function values at the training points.
         prior_mean (float): Prior mean of the Gaussian process.
 
     Returns:
         float: Delta mean at the new point to be added to precomputed vector.
     """
-    kernel_matrix_inv = np.linalg.inv(kernel_matrix)
-    mu = k_star.T @ kernel_matrix_inv @ (y_vector - prior_mean)
-    return mu
+    # Adjust the target vector by subtracting the prior mean
+    y_adjusted = y_vector - prior_mean
+
+    # Use np.linalg.solve to compute alpha (solve kernel_matrix @ alpha = y_adjusted)
+    alpha = np.linalg.solve(kernel_matrix, y_adjusted)
+
+    # Compute delta_mu as the dot product of k_star and alpha
+    delta_mu = np.dot(k_star, alpha)
+
+    return delta_mu
 
 
 def compute_delta_variance(k_star, kernel_matrix):
@@ -335,9 +343,7 @@ class MultiObjectiveBayesianOptimization:
                         prior_mean=self.prior_mean[obj_idx],
                     )
 
-                    self.mu_objectives[obj_idx][i] = (
-                        self.prior_mean[obj_idx] + delta_mu.item()
-                    )
+                    self.mu_objectives[obj_idx][i] = self.prior_mean[obj_idx] + delta_mu
                     mu_pred[obj_idx] = self.mu_objectives[obj_idx][i].item()
 
                     # Update variance
