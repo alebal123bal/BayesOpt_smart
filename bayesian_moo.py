@@ -489,7 +489,11 @@ class MultiObjectiveBayesianOptimization:
 
         # Initial guesses
         self.n_evaluations = initialize_samples(
-            self.x_vector, self.y_vector, self.dim, self.function
+            self.x_vector,
+            self.y_vector,
+            self.dim,
+            self.function,
+            self.initial_samples,
         )
 
         # Reference point for hypervolume (should be worse than any expected objective value)
@@ -558,6 +562,7 @@ if __name__ == "__main__":
         n_iterations=20,
         prior_mean=[50] * 3,
         prior_variance=[400.0] * 3,
+        initial_samples=5,
     )
 
     optimizer.optimize()
