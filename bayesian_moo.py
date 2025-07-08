@@ -4,7 +4,41 @@ Multi-Objective Bayesian optimization optimized class.
 
 import time
 import numpy as np
-from numba import njit, prange
+
+# Hardcoded debug flag - change this to True for debugging
+DEBUG_MODE = True
+
+# Conditional imports and setup
+if DEBUG_MODE:
+    print("🐛 DEBUG MODE - Numba disabled")
+
+    # Define dummy decorators that do nothing
+    def njit(*args, **kwargs):  # pylint: disable=unused-argument
+        """
+        Dummy njit decorator for debugging purposes.
+        """
+
+        def decorator(func):
+            """
+            Dummy decorator function that returns the function as is.
+            """
+            return func
+
+        if len(args) == 1 and callable(args[0]):
+            # Called as @njit without parentheses
+            return args[0]
+        # Called as @njit() or @njit(parallel=True)
+        return decorator
+
+    def prange(n):
+        """
+        Dummy prange function for debugging purposes.
+        """
+        return range(n)
+
+else:
+    print("🚀 PRODUCTION MODE - Numba enabled")
+    from numba import njit, prange
 
 X_MAX = 30
 Y_MAX = 30
@@ -43,7 +77,7 @@ def rbf_kernel(x1, x2, sigma, length_scale=1.0):
         float: The value of the RBF kernel between x1 and x2.
     """
     distance_squared = 0.0
-    for i in range(len(x1)):
+    for i in range(len(x1)):  # pylint: disable=consider-using-enumerate
         distance_squared += (x1[i] - x2[i]) ** 2
     return sigma**2 * np.exp(-0.5 * distance_squared / (length_scale**2))
 
@@ -145,7 +179,7 @@ def upper_confidence_bound(mu, variance, beta=2.0):
     Returns:
         float: Upper confidence bound value.
     """
-    return mu + beta * np.sqrt(variance)
+    return mu + beta * np.sqrt(np.abs(variance))
 
 
 @njit
@@ -228,6 +262,9 @@ def optimize(
         Updated `x_vector` and `y_vector` after optimization.
     """
     for f in range(3, n_iterations):  # pylint: disable=unused-variable
+        if DEBUG_MODE:
+            print(f"🔄 Debug: Starting iteration {f}, n_evaluations={n_evaluations}")
+
         # Compute kernel matrices for each objective
         for obj_idx in range(n_objectives):
             kernel_matrices[obj_idx, :n_evaluations, :n_evaluations] = compute_k(
@@ -243,9 +280,7 @@ def optimize(
             k_star = compute_k_star(
                 x_vector[:n_evaluations],
                 x_star,
-                sigma=np.sqrt(
-                    prior_variance[0]
-                ),  # Assume same sigma for all objectives
+                sigma=np.sqrt(np.abs(prior_variance[obj_idx])),
                 length_scale=3.0,
             )
 
@@ -292,6 +327,9 @@ def optimize(
         # Select the next point to evaluate
         x_next = input_space[np.argmax(acquisition_values)]
 
+        if DEBUG_MODE:
+            print(f"🔄 Debug: Selected next point: {x_next}")
+
         # Check if x_next is already evaluated
         already_evaluated = False
         for j in range(n_evaluations):
@@ -304,9 +342,14 @@ def optimize(
             x_vector[n_evaluations] = x_next
             y_vector[n_evaluations] = function(x_next)
 
+            if DEBUG_MODE:
+                print(f"🔄 Debug: Function value: {y_vector[n_evaluations]}")
+
             # Increment the number of evaluations
             n_evaluations += 1
         else:
+            if DEBUG_MODE:
+                print("🔄 Debug: Point already evaluated, stopping optimization")
             # Stop if the point is already evaluated
             break
 
