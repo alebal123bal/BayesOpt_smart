@@ -2,10 +2,11 @@
 Multi-Objective Bayesian optimization optimized class.
 """
 
+import time
 import numpy as np
 
-X_MAX = 30
-Y_MAX = 30
+X_MAX = 200
+Y_MAX = 200
 
 
 def toy_function(x):
@@ -362,6 +363,11 @@ class MultiObjectiveBayesianOptimization:
                 print(f"Point {x_next} already evaluated, breaking.")
                 break
 
+    def pareto_analysis(self):
+        """
+        Perform Pareto analysis on the results of the optimization.
+        """
+
         # Find Pareto frontier
         pareto_mask = is_pareto_efficient(
             -self.y_vector[: self.n_evaluations]
@@ -397,4 +403,9 @@ if __name__ == "__main__":
         prior_variance=[400.0] * 3,
     )
 
+    start_time = time.time()
+    print("Starting optimization...")
     optimizer.optimize()
+    optimizer.pareto_analysis()
+    end_time = time.time()
+    print(f"Optimization completed in {end_time - start_time:.2f} seconds.")
