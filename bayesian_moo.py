@@ -43,6 +43,7 @@ else:
 
 X_MAX = 30
 Y_MAX = 30
+Z_MAX = 30
 
 
 @njit
@@ -56,9 +57,9 @@ def toy_function(x):
     Returns:
         np.ndarray: Output array containing [f(x), g(x), h(x)].
     """
-    f_x = -np.sum((x - 12) ** 2) + 100
-    g_x = -np.sum((x - 12) ** 2) + 80
-    h_x = -np.sum((x - 12) ** 2) + 120
+    f_x = -((x[0] - 12) ** 2) + 100
+    g_x = -((x[1] - 1) ** 4) + 20
+    h_x = -((x[2] - 5) ** 2) + 120
 
     return np.array([f_x, g_x, h_x])
 
@@ -550,6 +551,7 @@ if __name__ == "__main__":
     _bounds = [
         (0, X_MAX),
         (0, Y_MAX),
+        (0, Z_MAX),
     ]
 
     start_time = time.time()
@@ -559,10 +561,10 @@ if __name__ == "__main__":
         toy_function,
         _bounds,
         n_objectives=3,
-        n_iterations=20,
+        n_iterations=30,
         prior_mean=[50] * 3,
         prior_variance=[400.0] * 3,
-        initial_samples=5,
+        initial_samples=2**3,  # 8 initial samples (2^3 for 3D space)
     )
 
     optimizer.optimize()
