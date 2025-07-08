@@ -264,30 +264,22 @@ class MultiObjectiveBayesianOptimization:
         self.y_vector = np.zeros((n_iterations, n_objectives))  # Multiple objectives
 
         # Preallocate the kernel matrices for each objective
-        self.kernel_matrices = [
-            np.zeros((n_iterations, n_iterations)) for _ in range(n_objectives)
-        ]
+        self.kernel_matrices = np.zeros(
+            (self.n_objectives, self.n_iterations, self.n_iterations), dtype=np.float64
+        )
 
         # Mean for each objective's Gaussian process
-        self.mu_objectives = [
-            np.array([self.prior_mean[obj_idx]] * self.input_space.shape[0]).reshape(
-                (self.input_space.shape[0], 1)
-            )
-            for obj_idx in range(n_objectives)
-        ]
+        self.mu_objectives = np.zeros(
+            (n_objectives, len(self.input_space)), dtype=np.float64
+        )
 
         # Variance for each objective's Gaussian process
-        self.variance_objectives = [
-            np.array(
-                [self.prior_variance[obj_idx]] * self.input_space.shape[0]
-            ).reshape((self.input_space.shape[0], 1))
-            for obj_idx in range(n_objectives)
-        ]
+        self.variance_objectives = np.zeros(
+            (n_objectives, len(self.input_space)), dtype=np.float64
+        )
 
         # Preallocate acquisition function values for each point
-        self.acquisition_values = np.array([0.0] * self.input_space.shape[0]).reshape(
-            (self.input_space.shape[0], 1)
-        )
+        self.acquisition_values = np.zeros(len(self.input_space), dtype=np.float64)
 
         # Initial guesses
         self.x_vector[0] = np.array([5.0] * self.dim)
