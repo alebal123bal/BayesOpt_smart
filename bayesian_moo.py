@@ -373,8 +373,10 @@ class MultiObjectiveBayesianOptimization:
         self.bounds = bounds
         self.n_objectives = n_objectives
         self.n_iterations = n_iterations
-        self.prior_mean = kwargs.get("prior_mean", [0.0] * n_objectives)
-        self.prior_variance = kwargs.get("prior_variance", [1.0] * n_objectives)
+        self.prior_mean = np.array(kwargs.get("prior_mean", [0.0] * n_objectives))
+        self.prior_variance = np.array(
+            kwargs.get("prior_variance", [1.0] * n_objectives)
+        )
 
         # Dimensionality of the input space
         self.dim = len(bounds)
