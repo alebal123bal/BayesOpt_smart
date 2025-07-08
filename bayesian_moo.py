@@ -132,6 +132,7 @@ def compute_delta_variance(k_star, kernel_matrix):
     return variance
 
 
+@njit
 def upper_confidence_bound(mu, variance, beta=2.0):
     """
     Compute the upper confidence bound for a Gaussian process.
@@ -147,10 +148,11 @@ def upper_confidence_bound(mu, variance, beta=2.0):
     return mu + beta * np.sqrt(variance)
 
 
+@njit
 def hypervolume_improvement(
     mu_objectives,
     variance_objectives,
-    reference_point,  # pylint: disable=unused-argument
+    reference_point,
     beta=2.0,
 ):
     """
@@ -166,18 +168,24 @@ def hypervolume_improvement(
     Returns:
         float: Acquisition function value.
     """
+    n_objectives = len(mu_objectives)
 
-    # Simple weighted sum of UCB values for each objective
-    ucb_values = np.array(
-        [
-            upper_confidence_bound(mu_objectives[i], variance_objectives[i], beta)
-            for i in range(len(mu_objectives))
-        ]
-    )
+    # Preallocate ucb_values array
+    ucb_values = np.empty(n_objectives, dtype=np.float64)
 
-    # You can adjust weights based on objective importance
-    weights = np.array([1.0] * len(mu_objectives))  # Equal weights
-    return np.sum(weights * ucb_values)
+    # Compute UCB values for each objective
+    for i in range(n_objectives):
+        ucb_values[i] = upper_confidence_bound(
+            mu_objectives[i], variance_objectives[i], beta
+        )
+
+    # Preallocate weights array (equal weights for all objectives)
+    weights = np.ones(n_objectives, dtype=np.float64)
+
+    # Compute weighted sum of UCB values
+    acquisition_value = np.dot(weights, ucb_values)
+
+    return acquisition_value
 
 
 def is_pareto_efficient(costs):
