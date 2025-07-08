@@ -10,6 +10,7 @@ X_MAX = 200
 Y_MAX = 200
 
 
+@njit
 def toy_function(x):
     """
     A multi-objective toy function to optimize.
@@ -20,9 +21,9 @@ def toy_function(x):
     Returns:
         np.ndarray: Output array containing [f(x), g(x), h(x)].
     """
-    f_x = -np.sum(((x - 12) ** 2)) + 100
-    g_x = -np.sum(((x - 12) ** 2)) + 80
-    h_x = -np.sum(((x - 12) ** 2)) + 120
+    f_x = -np.sum((x - 12) ** 2) + 100
+    g_x = -np.sum((x - 12) ** 2) + 80
+    h_x = -np.sum((x - 12) ** 2) + 120
 
     return np.array([f_x, g_x, h_x])
 
