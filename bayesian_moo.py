@@ -6,8 +6,8 @@ import time
 import numpy as np
 from numba import njit
 
-X_MAX = 20
-Y_MAX = 20
+X_MAX = 30
+Y_MAX = 30
 
 
 @njit
@@ -188,6 +188,131 @@ def hypervolume_improvement(
     return acquisition_value
 
 
+@njit
+def optimize(
+    x_vector,
+    y_vector,
+    kernel_matrices,
+    mu_objectives,
+    variance_objectives,
+    acquisition_values,
+    input_space,
+    prior_mean,
+    prior_variance,
+    reference_point,
+    n_evaluations,
+    n_iterations,
+    n_objectives,
+    function,
+):
+    """
+    Perform the Multi-Objective Bayesian optimization.
+
+    Args:
+        x_vector (np.ndarray): Array to store evaluated points.
+        y_vector (np.ndarray): Array to store objective values at evaluated points.
+        kernel_matrices (np.ndarray): Kernel matrices for each objective.
+        mu_objectives (np.ndarray): Mean predictions for each objective.
+        variance_objectives (np.ndarray): Variance predictions for each objective.
+        acquisition_values (np.ndarray): Acquisition function values for each point.
+        input_space (np.ndarray): Discretized input space.
+        prior_mean (np.ndarray): Prior mean for each objective.
+        prior_variance (np.ndarray): Prior variance for each objective.
+        reference_point (np.ndarray): Reference point for hypervolume calculation.
+        n_evaluations (int): Number of evaluations already performed.
+        n_iterations (int): Total number of iterations.
+        n_objectives (int): Number of objectives.
+        function (callable): The function to optimize.
+
+    Returns:
+        Updated `x_vector` and `y_vector` after optimization.
+    """
+    for f in range(3, n_iterations):
+        # Compute kernel matrices for each objective
+        for obj_idx in range(n_objectives):
+            kernel_matrices[obj_idx, :n_evaluations, :n_evaluations] = compute_k(
+                x_vector[:n_evaluations],
+                sigma=np.sqrt(prior_variance[obj_idx]),
+                length_scale=3.0,
+            )
+
+        for i in range(len(input_space)):
+            x_star = input_space[i]
+
+            # Compute the kernel vector for the new point
+            k_star = compute_k_star(
+                x_vector[:n_evaluations],
+                x_star,
+                sigma=np.sqrt(
+                    prior_variance[0]
+                ),  # Assume same sigma for all objectives
+                length_scale=3.0,
+            )
+
+            # Initialize mean and variance predictions for each objective
+            mu_pred = np.zeros(n_objectives, dtype=np.float64)
+            var_pred = np.zeros(n_objectives, dtype=np.float64)
+
+            # Update mean and variance for each objective
+            for obj_idx in range(n_objectives):
+                # Update mean
+                delta_mu = compute_delta_mu(
+                    k_star=k_star,
+                    kernel_matrix=kernel_matrices[
+                        obj_idx, :n_evaluations, :n_evaluations
+                    ],
+                    y_vector=y_vector[:n_evaluations, obj_idx],
+                    prior_mean=prior_mean[obj_idx],
+                )
+
+                mu_objectives[obj_idx, i] = prior_mean[obj_idx] + delta_mu
+                mu_pred[obj_idx] = mu_objectives[obj_idx, i]
+
+                # Update variance
+                delta_variance = compute_delta_variance(
+                    k_star=k_star,
+                    kernel_matrix=kernel_matrices[
+                        obj_idx, :n_evaluations, :n_evaluations
+                    ],
+                )
+
+                variance_objectives[obj_idx, i] = (
+                    prior_variance[obj_idx] + delta_variance
+                )
+                var_pred[obj_idx] = variance_objectives[obj_idx, i]
+
+            # Compute multi-objective acquisition function
+            acquisition_values[i] = hypervolume_improvement(
+                mu_pred,
+                var_pred,
+                reference_point,
+                beta=2.0,
+            )
+
+        # Select the next point to evaluate
+        x_next = input_space[np.argmax(acquisition_values)]
+
+        # Check if x_next is already evaluated
+        already_evaluated = False
+        for j in range(n_evaluations):
+            if np.all(x_vector[j] == x_next):
+                already_evaluated = True
+                break
+
+        if not already_evaluated:
+            # Evaluate the function at the new point
+            x_vector[n_evaluations] = x_next
+            y_vector[n_evaluations] = function(x_next)
+
+            # Increment the number of evaluations
+            n_evaluations += 1
+        else:
+            # Stop if the point is already evaluated
+            break
+
+    return x_vector, y_vector, n_evaluations
+
+
 def is_pareto_efficient(costs):
     """
     Find the Pareto-efficient points.
@@ -301,82 +426,23 @@ class MultiObjectiveBayesianOptimization:
         """
         Perform the Multi-Objective Bayesian optimization.
         """
-        for f in range(3, self.n_iterations):
-            # Compute kernel matrices for each objective
-            for obj_idx in range(self.n_objectives):
-                self.kernel_matrices[obj_idx][
-                    : self.n_evaluations, : self.n_evaluations
-                ] = compute_k(
-                    self.x_vector[: self.n_evaluations],
-                    sigma=np.sqrt(self.prior_variance[obj_idx]),
-                    length_scale=3.0,
-                )
-
-            for i, x_star in enumerate(self.input_space):
-                # Compute the kernel vector for the new point
-                k_star = compute_k_star(
-                    x_vector=self.x_vector[: self.n_evaluations],
-                    x_star=x_star,
-                    sigma=np.sqrt(self.prior_variance[obj_idx]),
-                    length_scale=3.0,
-                )
-
-                # Initialize mean and variance predictions for each objective
-                mu_pred = np.zeros(self.n_objectives, dtype=np.float64)
-                var_pred = np.zeros(self.n_objectives, dtype=np.float64)
-
-                # Update mean and variance for each objective
-                for obj_idx in range(self.n_objectives):
-                    # Update mean
-                    delta_mu = compute_delta_mu(
-                        k_star=k_star,
-                        kernel_matrix=self.kernel_matrices[obj_idx][
-                            : self.n_evaluations, : self.n_evaluations
-                        ],
-                        y_vector=self.y_vector[: self.n_evaluations, obj_idx],
-                        prior_mean=self.prior_mean[obj_idx],
-                    )
-
-                    self.mu_objectives[obj_idx][i] = self.prior_mean[obj_idx] + delta_mu
-                    mu_pred[obj_idx] = self.mu_objectives[obj_idx][i].item()
-
-                    # Update variance
-                    delta_variance = compute_delta_variance(
-                        k_star=k_star,
-                        kernel_matrix=self.kernel_matrices[obj_idx][
-                            : self.n_evaluations, : self.n_evaluations
-                        ],
-                    )
-
-                    self.variance_objectives[obj_idx][i] = (
-                        self.prior_variance[obj_idx] + delta_variance
-                    )
-                    var_pred[obj_idx] = self.variance_objectives[obj_idx][i].item()
-
-                # Compute multi-objective acquisition function
-                self.acquisition_values[i] = hypervolume_improvement(
-                    mu_pred,
-                    var_pred,
-                    self.reference_point,
-                    beta=2.0,
-                )
-
-            # Select the next point to evaluate
-            x_next = self.input_space[np.argmax(self.acquisition_values)]
-
-            # Check if x_next is already evaluated
-            if not np.any(
-                np.all(self.x_vector[: self.n_evaluations] == x_next, axis=1)
-            ):
-                # Evaluate the function at the new point
-                self.x_vector[f] = x_next
-                self.y_vector[f] = self.function(x_next)
-
-                # Increment the number of evaluations
-                self.n_evaluations += 1
-            else:
-                print(f"Point {x_next} already evaluated, breaking.")
-                break
+        # Optimize with numba
+        self.x_vector, self.y_vector, self.n_evaluations = optimize(
+            self.x_vector,
+            self.y_vector,
+            self.kernel_matrices,
+            self.mu_objectives,
+            self.variance_objectives,
+            self.acquisition_values,
+            self.input_space,
+            self.prior_mean,
+            self.prior_variance,
+            self.reference_point,
+            self.n_evaluations,
+            self.n_iterations,
+            self.n_objectives,
+            self.function,
+        )
 
     def pareto_analysis(self):
         """
@@ -409,6 +475,9 @@ if __name__ == "__main__":
         (0, Y_MAX),
     ]
 
+    start_time = time.time()
+    print("Starting optimization...")
+
     optimizer = MultiObjectiveBayesianOptimization(
         toy_function,
         _bounds,
@@ -418,8 +487,6 @@ if __name__ == "__main__":
         prior_variance=[400.0] * 3,
     )
 
-    start_time = time.time()
-    print("Starting optimization...")
     optimizer.optimize()
     optimizer.pareto_analysis()
     end_time = time.time()
