@@ -110,18 +110,12 @@ def compute_delta_mu(k_star, kernel_matrix, y_vector, prior_mean):
     Returns:
         float: Delta mean at the new point to be added to precomputed vector.
     """
-    # Adjust the target vector by subtracting the prior mean
-    y_adjusted = y_vector - prior_mean
-
-    # Use np.linalg.solve to compute alpha (solve kernel_matrix @ alpha = y_adjusted)
-    alpha = np.linalg.solve(kernel_matrix, y_adjusted)
-
-    # Compute delta_mu as the dot product of k_star and alpha
-    delta_mu = np.dot(k_star, alpha)
-
-    return delta_mu
+    kernel_matrix_inv = np.linalg.inv(kernel_matrix)
+    mu = k_star.T @ kernel_matrix_inv @ (y_vector - prior_mean)
+    return mu
 
 
+@njit
 def compute_delta_variance(k_star, kernel_matrix):
     """
     Update the variance of the Gaussian process at a new point.
@@ -135,7 +129,7 @@ def compute_delta_variance(k_star, kernel_matrix):
     """
     kernel_matrix_inv = np.linalg.inv(kernel_matrix)
     variance = -k_star.T @ kernel_matrix_inv @ k_star
-    return np.array(variance)
+    return variance
 
 
 def upper_confidence_bound(mu, variance, beta=2.0):
@@ -355,7 +349,7 @@ class MultiObjectiveBayesianOptimization:
                     )
 
                     self.variance_objectives[obj_idx][i] = (
-                        self.prior_variance[obj_idx] + delta_variance.item()
+                        self.prior_variance[obj_idx] + delta_variance
                     )
                     var_pred[obj_idx] = self.variance_objectives[obj_idx][i].item()
 
