@@ -2,11 +2,12 @@
 Multi-Objective Bayesian optimization optimized class.
 """
 
+import os
 import time
 import numpy as np
 
-# Hardcoded debug flag - change this to True for debugging
-DEBUG_MODE = True
+# Debug flag - setup from launch configuration or environment variable
+DEBUG_MODE = os.environ.get("BAYESIAN_DEBUG", "False").lower() in ("true", "1", "yes")
 
 # Conditional imports and setup
 if DEBUG_MODE:

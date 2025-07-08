@@ -22,7 +22,10 @@
             "type": "debugpy",
             "request": "launch",
             "module": "bayesian_moo",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "env": {
+                "BAYESIAN_DEBUG": "true"
+            }
         },
         {
             "name": "Run BayesMOO",
