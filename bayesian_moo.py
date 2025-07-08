@@ -87,7 +87,7 @@ def compute_k(x_vector, sigma, length_scale=1.0):
     n = len(x_vector)
     kernel_matrix = np.empty((n, n), dtype=np.float64)  # Preallocate the matrix
 
-    for i in prange(n):
+    for i in prange(n):  # pylint: disable=not-an-iterable
         for j in range(i, n):  # Compute only the upper triangle (kernel is symmetric)
             value = rbf_kernel(x_vector[i], x_vector[j], sigma, length_scale)
             kernel_matrix[i, j] = value
@@ -152,7 +152,7 @@ def upper_confidence_bound(mu, variance, beta=2.0):
 def hypervolume_improvement(
     mu_objectives,
     variance_objectives,
-    reference_point,
+    reference_point,  # pylint: disable=unused-argument
     beta=2.0,
 ):
     """
@@ -227,7 +227,7 @@ def optimize(
     Returns:
         Updated `x_vector` and `y_vector` after optimization.
     """
-    for f in range(3, n_iterations):
+    for f in range(3, n_iterations):  # pylint: disable=unused-variable
         # Compute kernel matrices for each objective
         for obj_idx in range(n_objectives):
             kernel_matrices[obj_idx, :n_evaluations, :n_evaluations] = compute_k(
@@ -236,7 +236,7 @@ def optimize(
                 length_scale=3.0,
             )
 
-        for i in range(len(input_space)):
+        for i in range(len(input_space)):  # pylint: disable=consider-using-enumerate
             x_star = input_space[i]
 
             # Compute the kernel vector for the new point
