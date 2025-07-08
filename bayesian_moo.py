@@ -4,7 +4,7 @@ Multi-Objective Bayesian optimization optimized class.
 
 import time
 import numpy as np
-from numba import njit
+from numba import njit, prange
 
 X_MAX = 30
 Y_MAX = 30
@@ -71,7 +71,7 @@ def compute_k_star(x_vector, x_star, sigma, length_scale=1.0):
     return k_star
 
 
-@njit
+@njit(parallel=True)
 def compute_k(x_vector, sigma, length_scale=1.0):
     """
     Compute the kernel matrix for the training points.
@@ -87,7 +87,7 @@ def compute_k(x_vector, sigma, length_scale=1.0):
     n = len(x_vector)
     kernel_matrix = np.empty((n, n), dtype=np.float64)  # Preallocate the matrix
 
-    for i in range(n):
+    for i in prange(n):
         for j in range(i, n):  # Compute only the upper triangle (kernel is symmetric)
             value = rbf_kernel(x_vector[i], x_vector[j], sigma, length_scale)
             kernel_matrix[i, j] = value
@@ -488,6 +488,7 @@ if __name__ == "__main__":
     )
 
     optimizer.optimize()
-    optimizer.pareto_analysis()
     end_time = time.time()
     print(f"Optimization completed in {end_time - start_time:.2f} seconds.")
+
+    optimizer.pareto_analysis()
