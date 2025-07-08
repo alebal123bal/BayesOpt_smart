@@ -2,33 +2,20 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug Bayes",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "bayesian_optimization",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Run Bayes",
+            "name": "Debug BayesMOO",
             "type": "debugpy",
             "request": "launch",
             "module": "bayesian_optimization",
             "console": "integratedTerminal",
-            "justMyCode": false,
-            "stopOnEntry": false
-        },
-        {
-            "name": "Debug BayesMOO",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "bayesian_moo",
-            "console": "integratedTerminal"
+            "env": {
+                "BAYESIAN_DEBUG": "true"
+            }
         },
         {
             "name": "Run BayesMOO",
             "type": "debugpy",
             "request": "launch",
-            "module": "bayesian_moo",
+            "module": "bayesian_optimization",
             "console": "integratedTerminal",
             "justMyCode": false,
             "stopOnEntry": false
