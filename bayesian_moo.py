@@ -64,6 +64,33 @@ def toy_function(x):
 
 
 @njit
+def initialize_samples(x_vector, y_vector, dim, function):
+    """
+    Initialize the first few sample points for the optimization.
+
+    Args:
+        x_vector (np.ndarray): Array to store evaluated points.
+        y_vector (np.ndarray): Array to store objective values at evaluated points.
+        dim (int): Dimensionality of the input space.
+        function (callable): The function to optimize.
+
+    Returns:
+        int: Number of evaluations performed.
+    """
+    # Initial guesses
+    x_vector[0] = np.full(dim, 5.0)
+    y_vector[0] = function(x_vector[0])
+
+    x_vector[1] = np.full(dim, 10.0)
+    y_vector[1] = function(x_vector[1])
+
+    x_vector[2] = np.full(dim, 15.0)
+    y_vector[2] = function(x_vector[2])
+
+    return 3  # Number of evaluations
+
+
+@njit
 def rbf_kernel(x1, x2, sigma, length_scale=1.0):
     """
     Radial basis function (RBF) kernel for multi-dimensional inputs.
@@ -453,20 +480,12 @@ class MultiObjectiveBayesianOptimization:
         self.acquisition_values = np.zeros(len(self.input_space), dtype=np.float64)
 
         # Initial guesses
-        self.x_vector[0] = np.array([5.0] * self.dim)
-        self.y_vector[0] = self.function(self.x_vector[0])
-
-        self.x_vector[1] = np.array([10.0] * self.dim)
-        self.y_vector[1] = self.function(self.x_vector[1])
-
-        self.x_vector[2] = np.array([15.0] * self.dim)
-        self.y_vector[2] = self.function(self.x_vector[2])
-
-        # Keep track of the number of evaluations
-        self.n_evaluations = 3
+        self.n_evaluations = initialize_samples(
+            self.x_vector, self.y_vector, self.dim, self.function
+        )
 
         # Reference point for hypervolume (should be worse than any expected objective value)
-        self.reference_point = np.array([0.0, 0.0, 0.0])
+        self.reference_point = np.array([0.0] * n_objectives)
 
     def optimize(self):
         """
