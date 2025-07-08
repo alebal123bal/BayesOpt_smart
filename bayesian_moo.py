@@ -47,20 +47,27 @@ def rbf_kernel(x1, x2, sigma, length_scale=1.0):
     return sigma**2 * np.exp(-0.5 * distance_squared / (length_scale**2))
 
 
+@njit
 def compute_k_star(x_vector, x_star, sigma, length_scale=1.0):
     """
     Compute the kernel vector between the training points and a new point.
 
     Args:
         x_vector (np.ndarray): Training points.
-        x_star (float): New point.
+        x_star (np.ndarray): New point.
         sigma (float): Standard deviation for the kernel.
         length_scale (float): Length scale parameter for the kernel.
 
     Returns:
         np.ndarray: Kernel vector between training points and the new point.
     """
-    return np.array([rbf_kernel(x, x_star, sigma, length_scale) for x in x_vector])
+    n = len(x_vector)
+    k_star = np.empty(n, dtype=np.float64)  # Preallocate array for the kernel vector
+
+    for i in range(n):
+        k_star[i] = rbf_kernel(x_vector[i], x_star, sigma, length_scale)
+
+    return k_star
 
 
 def compute_k(x_vector, sigma, length_scale=1.0):
