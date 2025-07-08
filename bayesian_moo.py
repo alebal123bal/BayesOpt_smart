@@ -4,6 +4,7 @@ Multi-Objective Bayesian optimization optimized class.
 
 import time
 import numpy as np
+from numba import njit
 
 X_MAX = 200
 Y_MAX = 200
@@ -26,6 +27,7 @@ def toy_function(x):
     return np.array([f_x, g_x, h_x])
 
 
+@njit
 def rbf_kernel(x1, x2, sigma, length_scale=1.0):
     """
     Radial basis function (RBF) kernel for multi-dimensional inputs.
@@ -39,8 +41,10 @@ def rbf_kernel(x1, x2, sigma, length_scale=1.0):
     Returns:
         float: The value of the RBF kernel between x1 and x2.
     """
-    distance_squared = np.sum((x1 - x2) ** 2)
-    return sigma**2 * np.exp(-0.5 * distance_squared / length_scale**2)
+    distance_squared = 0.0
+    for i in range(len(x1)):
+        distance_squared += (x1[i] - x2[i]) ** 2
+    return sigma**2 * np.exp(-0.5 * distance_squared / (length_scale**2))
 
 
 def compute_k_star(x_vector, x_star, sigma, length_scale=1.0):
