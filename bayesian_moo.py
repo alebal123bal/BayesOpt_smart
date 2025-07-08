@@ -70,6 +70,7 @@ def compute_k_star(x_vector, x_star, sigma, length_scale=1.0):
     return k_star
 
 
+@njit
 def compute_k(x_vector, sigma, length_scale=1.0):
     """
     Compute the kernel matrix for the training points.
@@ -83,12 +84,14 @@ def compute_k(x_vector, sigma, length_scale=1.0):
         np.ndarray: Kernel matrix for the training points.
     """
     n = len(x_vector)
-    kernel_matrix = np.zeros((n, n))
+    kernel_matrix = np.empty((n, n), dtype=np.float64)  # Preallocate the matrix
+
     for i in range(n):
-        for j in range(n):
-            kernel_matrix[i, j] = rbf_kernel(
-                x_vector[i], x_vector[j], sigma, length_scale
-            )
+        for j in range(i, n):  # Compute only the upper triangle (kernel is symmetric)
+            value = rbf_kernel(x_vector[i], x_vector[j], sigma, length_scale)
+            kernel_matrix[i, j] = value
+            kernel_matrix[j, i] = value  # Fill the symmetric element
+
     return kernel_matrix
 
 
