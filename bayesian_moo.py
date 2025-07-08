@@ -64,7 +64,7 @@ def toy_function(x):
 
 
 @njit
-def initialize_samples(x_vector, y_vector, dim, function):
+def initialize_samples(x_vector, y_vector, dim, function, n_samples=3):
     """
     Initialize the first few sample points for the optimization.
 
@@ -73,21 +73,28 @@ def initialize_samples(x_vector, y_vector, dim, function):
         y_vector (np.ndarray): Array to store objective values at evaluated points.
         dim (int): Dimensionality of the input space.
         function (callable): The function to optimize.
+        n_samples (int): Number of initial samples to generate.
 
     Returns:
         int: Number of evaluations performed.
     """
-    # Initial guesses
-    x_vector[0] = np.full(dim, 5.0)
-    y_vector[0] = function(x_vector[0])
+    # Initial guesses (keep integers for simplicity)
+    initial_guesses = np.random.randint(low=0, high=X_MAX, size=(n_samples, dim))
+    n_evaluations = 0
 
-    x_vector[1] = np.full(dim, 10.0)
-    y_vector[1] = function(x_vector[1])
+    for i in range(n_samples):
+        x_vector[i] = initial_guesses[i]
+        y_vector[i] = function(x_vector[i])
+        n_evaluations += 1
+        if DEBUG_MODE:
+            print(
+                f"➡️  Debug: Initial sample {i+1}: x = {x_vector[i]}, y = {y_vector[i]}"
+            )
 
-    x_vector[2] = np.full(dim, 15.0)
-    y_vector[2] = function(x_vector[2])
+    if DEBUG_MODE:
+        print(f"🎯 Debug: Initialized {n_evaluations} samples.\n")
 
-    return 3  # Number of evaluations
+    return n_evaluations
 
 
 @njit
@@ -356,7 +363,7 @@ def optimize(
         x_next = input_space[np.argmax(acquisition_values)]
 
         if DEBUG_MODE:
-            print(f"🔄 Debug: Selected next point: {x_next}")
+            print(f"  Debug: Selected next point: {x_next}")
 
         # Check if x_next is already evaluated
         already_evaluated = False
@@ -371,13 +378,13 @@ def optimize(
             y_vector[n_evaluations] = function(x_next)
 
             if DEBUG_MODE:
-                print(f"🔄 Debug: Function value: {y_vector[n_evaluations]}")
+                print(f"  Debug: Function value: {y_vector[n_evaluations]}")
 
             # Increment the number of evaluations
             n_evaluations += 1
         else:
             if DEBUG_MODE:
-                print("🔄 Debug: Point already evaluated, stopping optimization")
+                print("🎯 Debug: Point already evaluated, stopping optimization")
             # Stop if the point is already evaluated
             break
 
@@ -448,6 +455,7 @@ class MultiObjectiveBayesianOptimization:
         self.prior_variance = np.array(
             kwargs.get("prior_variance", [1.0] * n_objectives)
         )
+        self.initial_samples = kwargs.get("initial_samples", 3)
 
         # Dimensionality of the input space
         self.dim = len(bounds)
@@ -541,7 +549,7 @@ if __name__ == "__main__":
     ]
 
     start_time = time.time()
-    print("Starting optimization...")
+    print("\nStarting optimization...\n")
 
     optimizer = MultiObjectiveBayesianOptimization(
         toy_function,
@@ -554,6 +562,6 @@ if __name__ == "__main__":
 
     optimizer.optimize()
     end_time = time.time()
-    print(f"Optimization completed in {end_time - start_time:.2f} seconds.")
+    print(f"\nOptimization completed in {end_time - start_time:.2f} seconds.\n")
 
     optimizer.pareto_analysis()
