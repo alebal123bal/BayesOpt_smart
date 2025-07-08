@@ -24,7 +24,7 @@ pip install matplotlib
 ## Quick Start
 
 ```python
-from bayesian_moo import BayesianOptimization
+from bayesian_optimization import BayesianOptimization
 import numpy as np
 
 # Define your multi-objective function
@@ -89,7 +89,7 @@ Or set in VS Code launch configuration:
 
 ```python
 import numpy as np
-from bayesian_moo import BayesianOptimization
+from bayesian_optimization import BayesianOptimization
 
 # 3D multi-objective function
 def toy_function(x):
