@@ -356,6 +356,7 @@ def optimize(
                 length_scale=length_scale,
             )
 
+        # Loop through the input space to update mean and variance predictions
         for i in range(len(input_space)):  # pylint: disable=consider-using-enumerate
             x_star = input_space[i]
 
@@ -366,10 +367,6 @@ def optimize(
                 sigma=np.sqrt(np.abs(prior_variance[obj_idx])),
                 length_scale=length_scale,
             )
-
-            # Initialize mean and variance predictions for each objective
-            mu_pred = np.zeros(n_objectives, dtype=np.float64)
-            var_pred = np.zeros(n_objectives, dtype=np.float64)
 
             # Update mean and variance for each objective
             for obj_idx in range(n_objectives):
@@ -384,7 +381,6 @@ def optimize(
                 )
 
                 mu_objectives[obj_idx, i] = prior_mean[obj_idx] + delta_mu
-                mu_pred[obj_idx] = mu_objectives[obj_idx, i]
 
                 # Update variance
                 delta_variance = compute_delta_variance(
@@ -397,15 +393,19 @@ def optimize(
                 variance_objectives[obj_idx, i] = (
                     prior_variance[obj_idx] + delta_variance
                 )
-                var_pred[obj_idx] = variance_objectives[obj_idx, i]
 
-            # Compute multi-objective acquisition function
-            acquisition_values[i] = hypervolume_improvement(
-                mu_pred,
-                var_pred,
-                reference_point,
-                beta=beta,
-            )
+                # TODO: rescale mu and var
+
+        # Loop through the input space to compute acquisition function values
+        for i in range(len(input_space)):
+            for obj_idx in range(n_objectives):
+                # Compute multi-objective acquisition function
+                acquisition_values[i] = hypervolume_improvement(
+                    mu_objectives[:, i],
+                    variance_objectives[:, i],
+                    reference_point,
+                    beta=beta,
+                )
 
         # Select the next point to evaluate
         x_next = input_space[np.argmax(acquisition_values)]
@@ -631,11 +631,11 @@ if __name__ == "__main__":
     optimizer = BayesianOptimization(
         toy_function,
         _bounds,
-        n_objectives=3,
+        n_objectives=len(
+            _bounds
+        ),  # Number of objectives is equal to the number of bounds
         n_iterations=30,
-        # prior_mean=[50] * 3,
-        # prior_variance=[400.0] * 3,
-        initial_samples=2**3,  # 8 initial samples (2^3 for 3D space)
+        initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
     )
 
     optimizer.optimize(
