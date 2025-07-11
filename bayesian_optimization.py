@@ -82,9 +82,9 @@ def initialize_samples(x_vector, y_vector, dim, function, n_samples=3):
     # Initial guesses (keep integers for simplicity)
     initial_guesses = np.random.randint(low=0, high=X_MAX, size=(n_samples, dim))
     initial_guesses = [
-        np.array([5, 5, 5], dtype=np.int32),
-        np.array([10, 10, 10], dtype=np.int32),
-        np.array([15, 14, 15], dtype=np.int32),
+        np.array([5, 1, 1], dtype=np.int32),
+        np.array([10, 2, 2], dtype=np.int32),
+        np.array([15, 3, 3], dtype=np.int32),
     ]
     n_evaluations = 0
 
@@ -187,8 +187,8 @@ def rbf_kernel(x1, x2, var, length_scale=1.0):
     Radial basis function (RBF) kernel for multi-dimensional inputs.
 
     Args:
-        x1 (float): First input.
-        x2 (float): Second input.
+        x1 (np.ndarray): First input point in the hyperplane.
+        x2 (np.ndarray): Second input point in the hyperplane.
         var (float): Variance parameter for the kernel.
         length_scale (float): Length scale parameter for the kernel.
 
@@ -196,8 +196,8 @@ def rbf_kernel(x1, x2, var, length_scale=1.0):
         float: The value of the RBF kernel between x1 and x2.
     """
 
-    distance_squared = (x1 - x2) ** 2
-    return var * np.exp(-0.5 * distance_squared / (length_scale**2))
+    euclidean_distance_2 = np.sum((x1 - x2) ** 2)
+    return var * np.exp(-0.5 * euclidean_distance_2 / (length_scale**2))
 
 
 @njit
@@ -224,28 +224,40 @@ def compute_k_star(x_vector, x_star, var, length_scale=1.0):
 
 
 @njit(parallel=True)
-def compute_k(x_vector, var, length_scale=1.0):
+def update_k(
+    kernel_matrix,
+    x_vector,
+    current_eval,
+    var,
+    length_scale=1.0,
+):
     """
     Compute the kernel matrix for the training points.
 
     Args:
+        kernel_matrix (np.ndarray): Preallocated kernel matrix to fill.
         x_vector (np.ndarray): Training points.
+        current_eval (int): Current number of evaluations.
         var (float): Variance parameter for the kernel.
         length_scale (float): Length scale parameter for the kernel.
-
-    Returns:
-        np.ndarray: Kernel matrix for the training points.
     """
-    n = len(x_vector)
-    kernel_matrix = np.empty((n, n), dtype=np.float64)  # Preallocate the matrix
 
-    for i in prange(n):  # pylint: disable=not-an-iterable
-        for j in range(i, n):  # Compute only the upper triangle (kernel is symmetric)
-            value = rbf_kernel(x_vector[i], x_vector[j], var, length_scale)
-            kernel_matrix[i, j] = value
-            kernel_matrix[j, i] = value  # Fill the symmetric element
+    n_objectives = kernel_matrix.shape[0]
 
-    return kernel_matrix
+    # TODO : avoid recalculating the kernel matrix for already evaluated points (make it grow)
+    for i in prange(current_eval):  # pylint: disable=not-an-iterable
+        # Compute only the upper triangle (kernel is symmetric)
+        for j in range(i, current_eval):
+            kernel_matrix[:, i, j] = rbf_kernel(
+                x_vector[i, 0], x_vector[j, 0], 1.0, length_scale
+            )
+            # Symmetric entry
+            kernel_matrix[:, j, i] = kernel_matrix[:, i, j]
+
+    # The only difference between the kernel matrices for different objectives
+    # is the variance parameter
+    for obj_idx in range(n_objectives):
+        kernel_matrix[obj_idx] *= var[obj_idx]
 
 
 @njit
@@ -395,21 +407,20 @@ def optimize(
         (n_objectives, len(input_space)), dtype=np.float64
     )
 
-    for current_eval in range(
-        n_evaluations, n_iterations
-    ):  # pylint: disable=unused-variable
+    for current_eval in range(n_evaluations, n_iterations):
         if DEBUG_MODE:
             print(
                 f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={n_evaluations}"
             )
 
         # Compute kernel matrices for each objective
-        for obj_idx in range(n_objectives):
-            kernel_matrices[obj_idx, :current_eval, :current_eval] = compute_k(
-                x_vector[:current_eval, obj_idx],
-                var=prior_variance[obj_idx],
-                length_scale=length_scale,
-            )
+        update_k(
+            kernel_matrix=kernel_matrices,
+            x_vector=x_vector,
+            current_eval=current_eval,
+            var=prior_variance,
+            length_scale=length_scale,
+        )
 
         # Loop through each objective to compute mean and variance predictions
         for obj_idx in range(n_objectives):
