@@ -99,6 +99,47 @@ def initialize_samples(x_vector, y_vector, dim, function, n_samples=3):
 
 
 @njit
+def compute_prior_mean(x_vector, y_vector, n_evaluations, n_objectives):
+    """
+    Compute the prior mean for each objective based on initial samples.
+
+    Args:
+        x_vector (np.ndarray): Array of evaluated points.
+        y_vector (np.ndarray): Array of objective values at evaluated points.
+        n_evaluations (int): Number of evaluations performed.
+        n_objectives (int): Number of objectives.
+
+    Returns:
+        np.ndarray: Prior mean for each objective.
+    """
+
+    prior_mean = np.zeros(n_objectives, dtype=np.float64)
+    for obj_idx in range(n_objectives):
+        prior_mean[obj_idx] = np.mean(y_vector[:n_evaluations, obj_idx])
+    return prior_mean
+
+
+@njit
+def compute_prior_variance(y_vector, n_evaluations, n_objectives):
+    """
+    Compute the prior variance for each objective based on initial samples.
+
+    Args:
+        y_vector (np.ndarray): Array of objective values at evaluated points.
+        n_evaluations (int): Number of evaluations performed.
+        n_objectives (int): Number of objectives.
+
+    Returns:
+        np.ndarray: Prior variance for each objective.
+    """
+
+    prior_variance = np.zeros(n_objectives, dtype=np.float64)
+    for obj_idx in range(n_objectives):
+        prior_variance[obj_idx] = np.var(y_vector[:n_evaluations, obj_idx])
+    return prior_variance
+
+
+@njit
 def rbf_kernel(x1, x2, sigma, length_scale=1.0):
     """
     Radial basis function (RBF) kernel for multi-dimensional inputs.
@@ -461,6 +502,8 @@ class BayesianOptimization:
         self.bounds = bounds
         self.n_objectives = n_objectives
         self.n_iterations = n_iterations
+
+        # If prior mean and variance are not provided, calculate them later from initial samples
         self.prior_mean = np.array(kwargs.get("prior_mean", [0.0] * n_objectives))
         self.prior_variance = np.array(
             kwargs.get("prior_variance", [1.0] * n_objectives)
@@ -484,17 +527,17 @@ class BayesianOptimization:
             (self.n_objectives, self.n_iterations, self.n_iterations), dtype=np.float64
         )
 
-        # Mean for each objective's Gaussian process
+        # Preallocate the mean for each objective's Gaussian process
         self.mu_objectives = np.zeros(
             (n_objectives, len(self.input_space)), dtype=np.float64
         )
 
-        # Variance for each objective's Gaussian process
+        # Preallocate the variance for each objective's Gaussian process
         self.variance_objectives = np.zeros(
             (n_objectives, len(self.input_space)), dtype=np.float64
         )
 
-        # Preallocate acquisition function values for each point
+        # Preallocate the acquisition function values for each point
         self.acquisition_values = np.zeros(len(self.input_space), dtype=np.float64)
 
         # Initial guesses
@@ -505,6 +548,16 @@ class BayesianOptimization:
             self.function,
             self.initial_samples,
         )
+
+        # If prior mean and variance are not provided, calculate them from initial samples
+        if np.all(self.prior_mean == 0.0):
+            self.prior_mean = compute_prior_mean(
+                self.x_vector, self.y_vector, self.n_evaluations, n_objectives
+            )
+        if np.all(self.prior_variance == 1.0):
+            self.prior_variance = compute_prior_variance(
+                self.y_vector, self.n_evaluations, n_objectives
+            )
 
         # Reference point for hypervolume (should be worse than any expected objective value)
         self.reference_point = np.array([0.0] * n_objectives)
@@ -579,8 +632,8 @@ if __name__ == "__main__":
         _bounds,
         n_objectives=3,
         n_iterations=30,
-        prior_mean=[50] * 3,
-        prior_variance=[400.0] * 3,
+        # prior_mean=[50] * 3,
+        # prior_variance=[400.0] * 3,
         initial_samples=2**3,  # 8 initial samples (2^3 for 3D space)
     )
 
