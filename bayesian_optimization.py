@@ -561,7 +561,7 @@ def optimize(
         else:
             if DEBUG_MODE:
                 print("🎯 Debug: Point already evaluated, stopping optimization\n")
-                n_total = current_eval
+            n_total = current_eval
             break
 
     return x_vector, y_vector, n_total
