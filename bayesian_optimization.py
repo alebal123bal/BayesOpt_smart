@@ -215,6 +215,7 @@ def upper_confidence_bound(mu, variance, beta=2.0):
     Returns:
         float: Upper confidence bound value.
     """
+
     return mu + beta * np.sqrt(np.abs(variance))
 
 
@@ -238,6 +239,7 @@ def hypervolume_improvement(
     Returns:
         float: Acquisition function value.
     """
+
     n_objectives = len(mu_objectives)
 
     # Preallocate ucb_values array
@@ -299,8 +301,9 @@ def optimize(
         length_scale (float): Length scale parameter for the kernel.
 
     Returns:
-        Updated `x_vector` and `y_vector` after optimization.
+        tuple: Updated x_vector, y_vector, and number of evaluations.
     """
+
     for f in range(n_evaluations, n_iterations):  # pylint: disable=unused-variable
         if DEBUG_MODE:
             print(f"🔄 Debug: Starting iteration {f}, n_evaluations={n_evaluations}")
@@ -309,7 +312,7 @@ def optimize(
         for obj_idx in range(n_objectives):
             kernel_matrices[obj_idx, :n_evaluations, :n_evaluations] = compute_k(
                 x_vector[:n_evaluations],
-                sigma=np.sqrt(prior_variance[obj_idx]),
+                sigma=np.sqrt(np.abs(prior_variance[obj_idx])),
                 length_scale=length_scale,
             )
 
