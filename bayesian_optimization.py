@@ -41,9 +41,9 @@ else:
     print("🚀 PRODUCTION MODE - Numba enabled")
     from numba import njit, prange
 
-X_MAX = 30
-Y_MAX = 30
-Z_MAX = 30
+X_MAX = 20
+Y_MAX = 20
+Z_MAX = 20
 
 
 @njit
@@ -274,6 +274,8 @@ def optimize(
     n_iterations,
     n_objectives,
     function,
+    beta=2.0,
+    length_scale=3.0,
 ):
     """
     Perform the Multi-Objective Bayesian optimization.
@@ -293,6 +295,8 @@ def optimize(
         n_iterations (int): Total number of iterations.
         n_objectives (int): Number of objectives.
         function (callable): The function to optimize.
+        beta (float): Exploration-exploitation trade-off parameter.
+        length_scale (float): Length scale parameter for the kernel.
 
     Returns:
         Updated `x_vector` and `y_vector` after optimization.
@@ -306,7 +310,7 @@ def optimize(
             kernel_matrices[obj_idx, :n_evaluations, :n_evaluations] = compute_k(
                 x_vector[:n_evaluations],
                 sigma=np.sqrt(prior_variance[obj_idx]),
-                length_scale=3.0,
+                length_scale=length_scale,
             )
 
         for i in range(len(input_space)):  # pylint: disable=consider-using-enumerate
@@ -317,7 +321,7 @@ def optimize(
                 x_vector[:n_evaluations],
                 x_star,
                 sigma=np.sqrt(np.abs(prior_variance[obj_idx])),
-                length_scale=3.0,
+                length_scale=length_scale,
             )
 
             # Initialize mean and variance predictions for each objective
@@ -357,14 +361,16 @@ def optimize(
                 mu_pred,
                 var_pred,
                 reference_point,
-                beta=2.0,
+                beta=beta,
             )
 
         # Select the next point to evaluate
         x_next = input_space[np.argmax(acquisition_values)]
 
         if DEBUG_MODE:
-            print(f"  Debug: Selected next point: {x_next}")
+            print(
+                f"  Debug: Selected next point: {x_next} with hypervolume improvement {acquisition_values.max()}"
+            )
 
         # Check if x_next is already evaluated
         already_evaluated = False
@@ -500,10 +506,15 @@ class BayesianOptimization:
         # Reference point for hypervolume (should be worse than any expected objective value)
         self.reference_point = np.array([0.0] * n_objectives)
 
-    def optimize(self):
+    def optimize(self, beta=2.0, length_scale=3.0):
         """
         Perform the Multi-Objective Bayesian optimization.
+
+        Args:
+            beta (float): Exploration-exploitation trade-off parameter.
+            length_scale (float): Length scale parameter for the kernel.
         """
+
         # Optimize with numba
         self.x_vector, self.y_vector, self.n_evaluations = optimize(
             self.x_vector,
@@ -520,6 +531,8 @@ class BayesianOptimization:
             self.n_iterations,
             self.n_objectives,
             self.function,
+            beta=beta,
+            length_scale=length_scale,
         )
 
     def pareto_analysis(self):
@@ -567,7 +580,10 @@ if __name__ == "__main__":
         initial_samples=2**3,  # 8 initial samples (2^3 for 3D space)
     )
 
-    optimizer.optimize()
+    optimizer.optimize(
+        beta=5.0,
+        length_scale=1.0,
+    )
     end_time = time.time()
     print(f"\nOptimization completed in {end_time - start_time:.2f} seconds.\n")
 
