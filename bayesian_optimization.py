@@ -99,12 +99,11 @@ def initialize_samples(x_vector, y_vector, dim, function, n_samples=3):
 
 
 @njit
-def compute_prior_mean(x_vector, y_vector, n_evaluations, n_objectives):
+def compute_prior_mean(y_vector, n_evaluations, n_objectives):
     """
     Compute the prior mean for each objective based on initial samples.
 
     Args:
-        x_vector (np.ndarray): Array of evaluated points.
         y_vector (np.ndarray): Array of objective values at evaluated points.
         n_evaluations (int): Number of evaluations performed.
         n_objectives (int): Number of objectives.
@@ -508,6 +507,8 @@ class BayesianOptimization:
         self.prior_variance = np.array(
             kwargs.get("prior_variance", [1.0] * n_objectives)
         )
+
+        # Initial number of samples to evaluate
         self.initial_samples = kwargs.get("initial_samples", 3)
 
         # Dimensionality of the input space
@@ -552,7 +553,7 @@ class BayesianOptimization:
         # If prior mean and variance are not provided, calculate them from initial samples
         if np.all(self.prior_mean == 0.0):
             self.prior_mean = compute_prior_mean(
-                self.x_vector, self.y_vector, self.n_evaluations, n_objectives
+                self.y_vector, self.n_evaluations, n_objectives
             )
         if np.all(self.prior_variance == 1.0):
             self.prior_variance = compute_prior_variance(
