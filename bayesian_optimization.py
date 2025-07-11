@@ -273,6 +273,7 @@ def update_k_star(
         k_star[obj_idx] *= var[obj_idx]
 
 
+@njit
 def update_mean(
     mu_objectives,
     k_star,
@@ -313,6 +314,45 @@ def update_mean(
             # Compute the mean prediction for the current point
             mu_objectives[obj_idx, i] = (
                 prior_mean[obj_idx] + k_star[obj_idx, :current_eval, i].T @ _partial_mu
+            )
+
+
+@njit
+def update_variance(
+    variance_objectives,
+    k_star,
+    kernel_matrix,
+    prior_variance,
+    current_eval,
+):
+    """
+    Update the variance predictions for each objective based on the kernel vector and training points.
+
+    Args:
+        variance_objectives (np.ndarray): Preallocated variance predictions for each objective.
+        k_star (np.ndarray): Kernel vector for the new point.
+        kernel_matrix (np.ndarray): Kernel matrix for the training points.
+        prior_variance (np.ndarray): Prior variance for each objective.
+        current_eval (int): Current number of evaluations.
+    """
+
+    n_objectives = variance_objectives.shape[0]
+    n = len(k_star[0, 0])  # Number of points in the input space
+
+    for obj_idx in range(n_objectives):
+        # Precompute the inverse of the kernel matrix for the current objective
+        _kernel_matrix_inv = np.linalg.inv(
+            kernel_matrix[obj_idx, :current_eval, :current_eval]
+        )
+
+        # Cycle through the input space to compute the variance for each point
+        for i in range(n):
+            # Compute the variance prediction for the current point
+            variance_objectives[obj_idx, i] = (
+                prior_variance[obj_idx]
+                - k_star[obj_idx, :current_eval, i].T
+                @ _kernel_matrix_inv
+                @ k_star[obj_idx, :current_eval, i]
             )
 
 
@@ -496,6 +536,15 @@ def optimize(
             kernel_matrix=kernel_matrices,
             y_vector=y_vector,
             prior_mean=prior_mean,
+            current_eval=current_eval,
+        )
+
+        # Update variance predictions for each objective
+        update_variance(
+            variance_objectives=variance_objectives,
+            k_star=k_star,
+            kernel_matrix=kernel_matrices,
+            prior_variance=prior_variance,
             current_eval=current_eval,
         )
 
