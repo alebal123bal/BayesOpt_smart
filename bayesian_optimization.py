@@ -374,44 +374,51 @@ def upper_confidence_bound(mu, variance, beta=2.0):
 
 
 @njit
-def hypervolume_improvement(
+def update_ucb(
+    ucb,
     mu_objectives,
     variance_objectives,
-    reference_point,  # pylint: disable=unused-argument
     beta=2.0,
 ):
     """
-    Compute a multi-objective acquisition function based on hypervolume improvement.
-    This is a simplified version - you may want to use more sophisticated methods.
+    Update the upper confidence bound acquisition function values.
 
     Args:
+        ucb (np.ndarray): Preallocated upper confidence bound values.
         mu_objectives (np.ndarray): Mean predictions for each objective.
         variance_objectives (np.ndarray): Variance predictions for each objective.
-        reference_point (np.ndarray): Reference point for hypervolume calculation.
-        beta (float): Exploration parameter.
-
-    Returns:
-        float: Acquisition function value.
+        beta (float): Exploration-exploitation trade-off parameter.
     """
 
-    n_objectives = len(mu_objectives)
+    n_objectives = mu_objectives.shape[0]
+    n_points = len(ucb[0])
 
-    # Preallocate ucb_values array
-    ucb_values = np.empty(n_objectives, dtype=np.float64)
+    # Compute the UCB for each point
+    for obj_idx in range(n_objectives):
+        for i in range(n_points):
+            ucb[obj_idx, i] = upper_confidence_bound(
+                mu_objectives[obj_idx, i],
+                variance_objectives[obj_idx, i],
+                beta,
+            )
 
-    # Compute UCB values for each objective
-    for i in range(n_objectives):
-        ucb_values[i] = upper_confidence_bound(
-            mu_objectives[i], variance_objectives[i], beta
-        )
 
-    # Preallocate weights array (equal weights for all objectives)
-    weights = np.ones(n_objectives, dtype=np.float64)
+@njit
+def update_hypervolume_improvement(
+    acquisition_values,
+    ucb,
+):
+    """
+    Update the hypervolume improvement acquisition function values.
 
-    # Compute weighted sum of UCB values
-    acquisition_value = np.dot(weights, ucb_values)
+    Args:
+        ucb (np.ndarray): Upper confidence bound values for each point.
+    """
+    n_points = len(acquisition_values)
 
-    return acquisition_value
+    # Compute the hypervolume improvement acquisition function values
+    for i in range(n_points):
+        acquisition_values[i] = np.sum(ucb[:, i])
 
 
 @njit
@@ -422,6 +429,7 @@ def optimize(
     k_star,
     mu_objectives,
     variance_objectives,
+    ucb,
     acquisition_values,
     input_space,
     prior_mean,
@@ -513,19 +521,20 @@ def optimize(
         )
 
         # Normalize the mean and variance predictions for the hypervolume improvement
-        normalize_mean(mu=mu_objectives, norm_mu=norm_mu_objectives)
-        normalize_variance(var=variance_objectives, norm_var=norm_variance_objectives)
 
-        # Loop through the input space to compute acquisition function values
-        for obj_idx in range(n_objectives):
-            for i in range(len(input_space)):
-                # Compute multi-objective acquisition function
-                acquisition_values[i] = hypervolume_improvement(
-                    norm_mu_objectives[:, i],
-                    norm_variance_objectives[:, i],
-                    reference_point,
-                    beta=beta,
-                )
+        # Update Upper Confidence Bound (UCB)
+        update_ucb(
+            ucb=ucb,
+            mu_objectives=mu_objectives,
+            variance_objectives=variance_objectives,
+            beta=beta,
+        )
+
+        # Update hypervolume improvement acquisition function
+        update_hypervolume_improvement(
+            acquisition_values=acquisition_values,
+            ucb=ucb,
+        )
 
         # Select the next point to evaluate
         x_next = input_space[np.argmax(acquisition_values)]
@@ -661,6 +670,9 @@ class BayesianOptimization:
             (n_objectives, len(self.input_space)), dtype=np.float64
         )
 
+        # Preallocate the upper confidence bound acquisition function values for each objective
+        self.ucb = np.zeros((n_objectives, len(self.input_space)), dtype=np.float64)
+
         # Preallocate the acquisition function values for each point
         self.acquisition_values = np.zeros(len(self.input_space), dtype=np.float64)
 
@@ -705,6 +717,7 @@ class BayesianOptimization:
             k_star=self.k_star,
             mu_objectives=self.mu_objectives,
             variance_objectives=self.variance_objectives,
+            ucb=self.ucb,
             acquisition_values=self.acquisition_values,
             input_space=self.input_space,
             prior_mean=self.prior_mean,
