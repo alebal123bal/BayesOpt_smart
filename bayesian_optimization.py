@@ -372,7 +372,7 @@ def optimize(
 
         if DEBUG_MODE:
             print(
-                f"  Debug: Selected next point: {x_next} with hypervolume improvement {acquisition_values.max()}"
+                f"🔍 Debug: Selected next point: {x_next} with hypervolume improvement {acquisition_values.max()}"
             )
 
         # Check if x_next is already evaluated
@@ -388,13 +388,13 @@ def optimize(
             y_vector[n_evaluations] = function(x_next)
 
             if DEBUG_MODE:
-                print(f"  Debug: Function value: {y_vector[n_evaluations]}")
+                print(f"✅ Debug: Objective values: {y_vector[n_evaluations]}\n")
 
             # Increment the number of evaluations
             n_evaluations += 1
         else:
             if DEBUG_MODE:
-                print("🎯 Debug: Point already evaluated, stopping optimization")
+                print("🎯 Debug: Point already evaluated, stopping optimization\n")
             # Stop if the point is already evaluated
             break
 
@@ -550,12 +550,13 @@ class BayesianOptimization:
         pareto_solutions = self.x_vector[: self.n_evaluations][pareto_mask]
         pareto_objectives = self.y_vector[: self.n_evaluations][pareto_mask]
 
-        # Print results
-        print("Final results:")
-        for i in range(self.n_evaluations):
-            print(f"x = {self.x_vector[i]}, objectives = {self.y_vector[i]}")
+        if DEBUG_MODE:
+            # Print results
+            print("\n📊 Final results:")
+            for i in range(self.n_evaluations):
+                print(f"x = {self.x_vector[i]}, objectives = {self.y_vector[i]}")
 
-        print(f"\nPareto optimal solutions found: {len(pareto_solutions)}")
+        print(f"\n⚖️  Pareto optimal solutions found: {len(pareto_solutions)}")
         for i, (x_pareto, obj_pareto) in enumerate(
             zip(pareto_solutions, pareto_objectives)
         ):
@@ -571,7 +572,7 @@ if __name__ == "__main__":
     ]
 
     start_time = time.time()
-    print("\nStarting optimization...\n")
+    print("\n⚡ Starting optimization...\n")
 
     optimizer = BayesianOptimization(
         toy_function,
@@ -587,7 +588,8 @@ if __name__ == "__main__":
         beta=5.0,
         length_scale=1.0,
     )
+
     end_time = time.time()
-    print(f"\nOptimization completed in {end_time - start_time:.2f} seconds.\n")
+    print(f"\n🎉 Optimization completed in {end_time - start_time:.2f} seconds.")
 
     optimizer.pareto_analysis()
