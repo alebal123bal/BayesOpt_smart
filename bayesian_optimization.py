@@ -201,26 +201,39 @@ def rbf_kernel(x1, x2, var, length_scale=1.0):
 
 
 @njit
-def compute_k_star(x_vector, x_star, var, length_scale=1.0):
+def update_k_star(
+    k_star,
+    x_vector,
+    input_space,
+    current_eval,
+    var,
+    length_scale=1.0,
+):
     """
-    Compute the kernel vector between the training points and a new point.
+    Update the kernel vector for a new point based on the training points.
 
     Args:
+        k_star (np.ndarray): Preallocated kernel vector to fill up to the current_eval.
         x_vector (np.ndarray): Training points.
-        x_star (np.ndarray): New point.
-        var (float): Variance parameter for the kernel.
+        input_space (np.ndarray): Discretized input space.
+        current_eval (int): Current number of evaluations.
+        var (np.ndarray): Variance parameter for the kernel.
         length_scale (float): Length scale parameter for the kernel.
-
-    Returns:
-        np.ndarray: Kernel vector between training points and the new point.
     """
-    n = len(x_vector)
-    k_star = np.empty(n, dtype=np.float64)  # Preallocate array for the kernel vector
 
-    for i in range(n):
-        k_star[i] = rbf_kernel(x_vector[i], x_star, var, length_scale)
+    n_objectives = k_star.shape[0]
+    n = len(input_space)
 
-    return k_star
+    # Compute the same rbf kernel for all objectives, as the only difference is the variance
+    for e in range(current_eval):
+        eval_x = x_vector[e, :]
+        for i in range(n):
+            x_star = input_space[i]
+            k_star[:, e, i] = rbf_kernel(eval_x, x_star, 1.0, length_scale)
+
+    # Modify the  k_star based on the prior variance for each objective
+    for obj_idx in range(n_objectives):
+        k_star[obj_idx] *= var[obj_idx]
 
 
 @njit(parallel=True)
@@ -254,8 +267,7 @@ def update_k(
             # Symmetric entry
             kernel_matrix[:, j, i] = kernel_matrix[:, i, j]
 
-    # The only difference between the kernel matrices for different objectives
-    # is the variance parameter
+    # The only difference in the matrices for different objectives is the prior variance
     for obj_idx in range(n_objectives):
         kernel_matrix[obj_idx] *= var[obj_idx]
 
@@ -359,6 +371,7 @@ def optimize(
     x_vector,
     y_vector,
     kernel_matrices,
+    k_star,
     mu_objectives,
     variance_objectives,
     acquisition_values,
@@ -413,10 +426,20 @@ def optimize(
                 f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={n_evaluations}"
             )
 
-        # Compute kernel matrices for each objective
+        # Update kernel matrices for each objective
         update_k(
             kernel_matrix=kernel_matrices,
             x_vector=x_vector,
+            current_eval=current_eval,
+            var=prior_variance,
+            length_scale=length_scale,
+        )
+
+        # Update k star for each objective
+        update_k_star(
+            k_star=k_star,
+            x_vector=x_vector,
+            input_space=input_space,
             current_eval=current_eval,
             var=prior_variance,
             length_scale=length_scale,
@@ -431,12 +454,6 @@ def optimize(
                 x_star = input_space[i]
 
                 # Compute the kernel vector for the new point
-                k_star = compute_k_star(
-                    x_vector[:current_eval],
-                    x_star,
-                    var=prior_variance[obj_idx],
-                    length_scale=length_scale,
-                )
 
                 # Update mean and variance for each objective
                 delta_mu = compute_delta_mu(
@@ -595,6 +612,12 @@ class BayesianOptimization:
             (self.n_objectives, self.n_iterations, self.n_iterations), dtype=np.float64
         )
 
+        # Preallocate the kernel vector kstar for each objective
+        self.k_star = np.zeros(
+            (self.n_objectives, self.n_iterations, len(self.input_space)),
+            dtype=np.float64,
+        )
+
         # Preallocate the mean for each objective's Gaussian process
         self.mu_objectives = np.zeros(
             (n_objectives, len(self.input_space)), dtype=np.float64
@@ -643,20 +666,21 @@ class BayesianOptimization:
 
         # Optimize with numba
         self.x_vector, self.y_vector, self.n_evaluations = optimize(
-            self.x_vector,
-            self.y_vector,
-            self.kernel_matrices,
-            self.mu_objectives,
-            self.variance_objectives,
-            self.acquisition_values,
-            self.input_space,
-            self.prior_mean,
-            self.prior_variance,
-            self.reference_point,
-            self.n_evaluations,
-            self.n_iterations,
-            self.n_objectives,
-            self.function,
+            x_vector=self.x_vector,
+            y_vector=self.y_vector,
+            kernel_matrices=self.kernel_matrices,
+            k_star=self.k_star,
+            mu_objectives=self.mu_objectives,
+            variance_objectives=self.variance_objectives,
+            acquisition_values=self.acquisition_values,
+            input_space=self.input_space,
+            prior_mean=self.prior_mean,
+            prior_variance=self.prior_variance,
+            reference_point=self.reference_point,
+            n_evaluations=self.n_evaluations,
+            n_iterations=self.n_iterations,
+            n_objectives=self.n_objectives,
+            function=self.function,
             beta=beta,
             length_scale=length_scale,
         )
