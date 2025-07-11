@@ -273,6 +273,49 @@ def update_k_star(
         k_star[obj_idx] *= var[obj_idx]
 
 
+def update_mean(
+    mu_objectives,
+    k_star,
+    kernel_matrix,
+    y_vector,
+    prior_mean,
+    current_eval,
+):
+    """
+    Update the mean predictions for each objective based on the kernel vector and training points.
+
+    Args:
+        mu_objectives (np.ndarray): Preallocated mean predictions for each objective.
+        k_star (np.ndarray): Kernel vector for the new point.
+        kernel_matrix (np.ndarray): Kernel matrix for the training points.
+        y_vector (np.ndarray): Function values at the training points.
+        prior_mean (np.ndarray): Prior mean for each objective.
+        current_eval (int): Current number of evaluations.
+    """
+
+    n_objectives = mu_objectives.shape[0]
+    n = len(k_star[0, 0])  # Number of points in the input space
+
+    for obj_idx in range(n_objectives):
+        # Precompute the inverse of the kernel matrix for the current objective
+        _kernel_matrix_inv = np.linalg.inv(
+            kernel_matrix[obj_idx, :current_eval, :current_eval]
+        )
+
+        # Precompute the difference between the current evaluations and the prior mean
+        _delta_y = y_vector[:current_eval, obj_idx] - prior_mean[obj_idx]
+
+        # Precompute their dot product with the kernel vector
+        _partial_mu = _kernel_matrix_inv @ _delta_y
+
+        # Cycle the input space to compute the mean for each point
+        for i in range(n):
+            # Compute the mean prediction for the current point
+            mu_objectives[obj_idx, i] = (
+                prior_mean[obj_idx] + k_star[obj_idx, :current_eval, i].T @ _partial_mu
+            )
+
+
 @njit
 def compute_delta_mu(k_star, kernel_matrix, y_vector, prior_mean):
     """
@@ -444,6 +487,16 @@ def optimize(
             current_eval=current_eval,
             var=prior_variance,
             length_scale=length_scale,
+        )
+
+        # Update mean predictions for each objective
+        update_mean(
+            mu_objectives=mu_objectives,
+            k_star=k_star,
+            kernel_matrix=kernel_matrices,
+            y_vector=y_vector,
+            prior_mean=prior_mean,
+            current_eval=current_eval,
         )
 
         # Loop through each objective to compute mean and variance predictions
@@ -725,10 +778,10 @@ if __name__ == "__main__":
     optimizer = BayesianOptimization(
         toy_function,
         _bounds,
-        n_objectives=len(
-            _bounds
-        ),  # Number of objectives is equal to the number of bounds
+        n_objectives=len(_bounds),
         n_iterations=30,
+        prior_mean=[50] * len(_bounds),  # Initial prior mean
+        prior_variance=[400] * len(_bounds),  # Initial prior variance
         initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
     )
 
