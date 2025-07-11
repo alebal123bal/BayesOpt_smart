@@ -357,42 +357,6 @@ def update_variance(
 
 
 @njit
-def compute_delta_mu(k_star, kernel_matrix, y_vector, prior_mean):
-    """
-    Update the mean of the Gaussian process at a new point.
-
-    Args:
-        k_star (np.ndarray): Kernel vector for the new point.
-        kernel_matrix (np.ndarray): Kernel matrix for the training points.
-        y_vector (np.ndarray): Function values at the training points.
-        prior_mean (float): Prior mean of the Gaussian process.
-
-    Returns:
-        float: Delta mean at the new point to be added to precomputed vector.
-    """
-    kernel_matrix_inv = np.linalg.inv(kernel_matrix)
-    mu = k_star.T @ kernel_matrix_inv @ (y_vector - prior_mean)
-    return mu
-
-
-@njit
-def compute_delta_variance(k_star, kernel_matrix):
-    """
-    Update the variance of the Gaussian process at a new point.
-
-    Args:
-        k_star (np.ndarray): Kernel vector for the new point.
-        kernel_matrix (np.ndarray): Kernel matrix for the training points.
-
-    Returns:
-        float: Delta variance at the new point to be added to precomputed vector.
-    """
-    kernel_matrix_inv = np.linalg.inv(kernel_matrix)
-    variance = -k_star.T @ kernel_matrix_inv @ k_star
-    return variance
-
-
-@njit
 def upper_confidence_bound(mu, variance, beta=2.0):
     """
     Compute the upper confidence bound for a Gaussian process.
@@ -547,40 +511,6 @@ def optimize(
             prior_variance=prior_variance,
             current_eval=current_eval,
         )
-
-        # Loop through each objective to compute mean and variance predictions
-        for obj_idx in range(n_objectives):
-            # Loop through the input space to update mean and variance predictions
-            for i in range(
-                len(input_space)
-            ):  # pylint: disable=consider-using-enumerate
-                x_star = input_space[i]
-
-                # Compute the kernel vector for the new point
-
-                # Update mean and variance for each objective
-                delta_mu = compute_delta_mu(
-                    k_star=k_star,
-                    kernel_matrix=kernel_matrices[
-                        obj_idx, :current_eval, :current_eval
-                    ],
-                    y_vector=y_vector[:current_eval, obj_idx],
-                    prior_mean=prior_mean[obj_idx],
-                )
-
-                mu_objectives[obj_idx, i] = prior_mean[obj_idx] + delta_mu
-
-                # Update variance
-                delta_variance = compute_delta_variance(
-                    k_star=k_star,
-                    kernel_matrix=kernel_matrices[
-                        obj_idx, :current_eval, :current_eval
-                    ],
-                )
-
-                variance_objectives[obj_idx, i] = (
-                    prior_variance[obj_idx] + delta_variance
-                )
 
         # Normalize the mean and variance predictions for the hypervolume improvement
         normalize_mean(mu=mu_objectives, norm_mu=norm_mu_objectives)
