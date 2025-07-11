@@ -200,42 +200,6 @@ def rbf_kernel(x1, x2, var, length_scale=1.0):
     return var * np.exp(-0.5 * euclidean_distance_2 / (length_scale**2))
 
 
-@njit
-def update_k_star(
-    k_star,
-    x_vector,
-    input_space,
-    current_eval,
-    var,
-    length_scale=1.0,
-):
-    """
-    Update the kernel vector for a new point based on the training points.
-
-    Args:
-        k_star (np.ndarray): Preallocated kernel vector to fill up to the current_eval.
-        x_vector (np.ndarray): Training points.
-        input_space (np.ndarray): Discretized input space.
-        current_eval (int): Current number of evaluations.
-        var (np.ndarray): Variance parameter for the kernel.
-        length_scale (float): Length scale parameter for the kernel.
-    """
-
-    n_objectives = k_star.shape[0]
-    n = len(input_space)
-
-    # Compute the same rbf kernel for all objectives, as the only difference is the variance
-    for e in range(current_eval):
-        eval_x = x_vector[e, :]
-        for i in range(n):
-            x_star = input_space[i]
-            k_star[:, e, i] = rbf_kernel(eval_x, x_star, 1.0, length_scale)
-
-    # Modify the  k_star based on the prior variance for each objective
-    for obj_idx in range(n_objectives):
-        k_star[obj_idx] *= var[obj_idx]
-
-
 @njit(parallel=True)
 def update_k(
     kernel_matrix,
@@ -270,6 +234,43 @@ def update_k(
     # The only difference in the matrices for different objectives is the prior variance
     for obj_idx in range(n_objectives):
         kernel_matrix[obj_idx] *= var[obj_idx]
+
+
+@njit
+def update_k_star(
+    k_star,
+    x_vector,
+    input_space,
+    current_eval,
+    var,
+    length_scale=1.0,
+):
+    """
+    Update the kernel vector for a new point based on the training points.
+
+    Args:
+        k_star (np.ndarray): Preallocated kernel vector to fill up to the current_eval.
+        x_vector (np.ndarray): Training points.
+        input_space (np.ndarray): Discretized input space.
+        current_eval (int): Current number of evaluations.
+        var (np.ndarray): Variance parameter for the kernel.
+        length_scale (float): Length scale parameter for the kernel.
+    """
+
+    n_objectives = k_star.shape[0]
+    n = len(input_space)
+
+    # TODO : avoid recalculating the k star for already evaluated points (make it grow)
+    # Compute the same rbf kernel for all objectives, as the only difference is the variance
+    for e in range(current_eval):
+        eval_x = x_vector[e, :]
+        for i in range(n):
+            x_star = input_space[i]
+            k_star[:, e, i] = rbf_kernel(eval_x, x_star, 1.0, length_scale)
+
+    # Modify the  k_star based on the prior variance for each objective
+    for obj_idx in range(n_objectives):
+        k_star[obj_idx] *= var[obj_idx]
 
 
 @njit
