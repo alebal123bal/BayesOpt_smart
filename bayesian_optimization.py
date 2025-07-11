@@ -226,7 +226,7 @@ def update_k(
         # Compute only the upper triangle (kernel is symmetric)
         for j in range(i, current_eval):
             kernel_matrix[:, i, j] = rbf_kernel(
-                x_vector[i, 0], x_vector[j, 0], 1.0, length_scale
+                x_vector[i], x_vector[j], 1.0, length_scale
             )
             # Symmetric entry
             kernel_matrix[:, j, i] = kernel_matrix[:, i, j]
@@ -778,7 +778,7 @@ if __name__ == "__main__":
     )
 
     optimizer.optimize(
-        beta=1.5,
+        beta=2.0,
         length_scale=3.0,
     )
 
