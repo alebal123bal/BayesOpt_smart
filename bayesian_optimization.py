@@ -58,7 +58,7 @@ def toy_function(x):
         np.ndarray: Output array containing [f(x), g(x), h(x)].
     """
     f_x = -((x[0] - 12) ** 2) + 100
-    g_x = -((x[1] - 1) ** 4) + 20
+    g_x = -((x[1] - 1) ** 2) + 20
     h_x = -((x[2] - 5) ** 2) + 120
 
     return np.array([f_x, g_x, h_x])
@@ -88,7 +88,7 @@ def initialize_samples(x_vector, y_vector, dim, function, n_samples=3):
     ]
     n_evaluations = 0
 
-    for i in range(len(initial_guesses)):
+    for i in range(len(initial_guesses)):  # pylint: disable=consider-using-enumerate
         x_vector[i] = initial_guesses[i]
         y_vector[i] = function(x_vector[i])
         n_evaluations += 1
@@ -326,7 +326,8 @@ def update_variance(
     current_eval,
 ):
     """
-    Update the variance predictions for each objective based on the kernel vector and training points.
+    Update the variance predictions for each objective based on the kernel vector
+    and training points.
 
     Args:
         variance_objectives (np.ndarray): Preallocated variance predictions for each objective.
@@ -551,6 +552,9 @@ def optimize(
                 already_evaluated = True
                 break
 
+        # Update the total number of evaluations
+        n_total = current_eval
+
         if not already_evaluated:
             # Evaluate the function at the new point
             x_vector[current_eval] = x_next
@@ -561,43 +565,30 @@ def optimize(
         else:
             if DEBUG_MODE:
                 print("🎯 Debug: Point already evaluated, stopping optimization\n")
-            n_total = current_eval
             break
 
-    return x_vector, y_vector, n_total
+    return x_vector, y_vector, n_total + 1
 
 
-def is_pareto_efficient(costs):
+def is_pareto_efficient(y_vector):
     """
-    Find the Pareto-efficient points.
-
-    Args:
-        costs (np.ndarray): An (n_points, n_objectives) array
-
-    Returns:
-        np.ndarray: A boolean array indicating which points are Pareto efficient
+    Find the Pareto-efficient points from the evaluations.
     """
+    is_efficient = np.ones(y_vector.shape[0], dtype=bool)
 
-    # Efficient set is defined as the set of points that are not dominated by any other point
-    is_efficient = np.arange(costs.shape[0])
-    n_points = costs.shape[0]
-    next_point_index = 0
+    for i in range(y_vector.shape[0]):
+        if not is_efficient[i]:
+            continue
+        for j in range(i + 1, y_vector.shape[0]):
+            if np.all(y_vector[j] <= y_vector[i]) and np.any(y_vector[j] < y_vector[i]):
+                is_efficient[i] = False
+                break
+            elif np.all(y_vector[i] <= y_vector[j]) and np.any(
+                y_vector[i] < y_vector[j]
+            ):
+                is_efficient[j] = False
 
-    # Iterate through each point and check if it is dominated by any other point
-    while next_point_index < len(costs):
-        # Check if the current point is dominated by any other point
-        nondominated_point_mask = np.any(costs < costs[next_point_index], axis=1)
-        nondominated_point_mask[next_point_index] = True
-        # If the current point is dominated by any other point, remove it from the efficient set
-        is_efficient = is_efficient[nondominated_point_mask]
-        costs = costs[nondominated_point_mask]
-
-        # Move to the next point
-        next_point_index = np.sum(nondominated_point_mask[:next_point_index]) + 1
-
-    is_efficient_mask = np.zeros(n_points, dtype=bool)
-    is_efficient_mask[is_efficient] = True
-    return is_efficient_mask
+    return is_efficient
 
 
 class BayesianOptimization:
@@ -736,24 +727,24 @@ class BayesianOptimization:
         Perform Pareto analysis on the results of the optimization.
         """
 
-        # Find Pareto frontier
-        pareto_mask = is_pareto_efficient(
-            -self.y_vector[: self.n_evaluations]
-        )  # Negative for maximization
-        pareto_solutions = self.x_vector[: self.n_evaluations][pareto_mask]
-        pareto_objectives = self.y_vector[: self.n_evaluations][pareto_mask]
+        is_efficient = is_pareto_efficient(self.y_vector[: self.n_evaluations])
+
+        # Extract Pareto-efficient points
+        pareto_points = self.y_vector[is_efficient]
+
+        # Extract point of the input space corresponding to Pareto-efficient points
+        pareto_indices = np.where(is_efficient)[0]
+        pareto_input_points = self.x_vector[pareto_indices]
 
         if DEBUG_MODE:
-            # Print results
-            print("\n📊 Final results:")
-            for i in range(self.n_evaluations):
-                print(f"x = {self.x_vector[i]}, objectives = {self.y_vector[i]}")
+            print("📊 Pareto Analysis Results:")
 
-        print(f"\n⚖️  Pareto optimal solutions found: {len(pareto_solutions)}")
-        for i, (x_pareto, obj_pareto) in enumerate(
-            zip(pareto_solutions, pareto_objectives)
-        ):
-            print(f"Pareto {i+1}: x = {x_pareto}, objectives = {obj_pareto}")
+            for i, point in enumerate(pareto_points):
+                print(
+                    f"  Pareto Point {i + 1}: {point}, Input: {pareto_input_points[i]}"
+                )
+
+        return pareto_points
 
 
 if __name__ == "__main__":
@@ -771,7 +762,7 @@ if __name__ == "__main__":
         toy_function,
         _bounds,
         n_objectives=len(_bounds),
-        n_iterations=30,
+        n_iterations=10,
         prior_mean=[50] * len(_bounds),  # Initial prior mean
         prior_variance=[400] * len(_bounds),  # Initial prior variance
         initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
