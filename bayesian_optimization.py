@@ -85,7 +85,11 @@ def initialize_samples(x_vector, y_vector, dim, function, n_samples=3):
         np.array([5, 1, 1], dtype=np.int32),
         np.array([10, 2, 2], dtype=np.int32),
         np.array([15, 3, 3], dtype=np.int32),
+        np.array([17, 17, 17], dtype=np.int32),
+        np.array([20, 4, 4], dtype=np.int32),
     ]
+    # TODO: very important to have an even initial space for u and sigma eval
+
     n_evaluations = 0
 
     for i in range(len(initial_guesses)):  # pylint: disable=consider-using-enumerate
@@ -263,7 +267,7 @@ def update_k_star(
     # TODO : avoid recalculating the k star for already evaluated points (make it grow)
     # Compute the same rbf kernel for all objectives, as the only difference is the variance
     for e in range(current_eval):
-        eval_x = x_vector[e, :]
+        eval_x = x_vector[e]
         for i in range(n):
             x_star = input_space[i]
             k_star[:, e, i] = rbf_kernel(eval_x, x_star, 1.0, length_scale)
@@ -435,7 +439,7 @@ def optimize(
     input_space,
     prior_mean,
     prior_variance,
-    reference_point,
+    reference_point,  # pylint: disable=unused-argument
     n_evaluations,
     n_iterations,
     n_objectives,
@@ -472,10 +476,12 @@ def optimize(
     n_total = 0
 
     # Preallocate normalized mean and variance arrays
-    norm_mu_objectives = np.zeros((n_objectives, len(input_space)), dtype=np.float64)
+    norm_mu_objectives = np.zeros(
+        (n_objectives, len(input_space)), dtype=np.float64
+    )  # pylint: disable=unused-variable
     norm_variance_objectives = np.zeros(
         (n_objectives, len(input_space)), dtype=np.float64
-    )
+    )  # pylint: disable=unused-variable
 
     for current_eval in range(n_evaluations, n_iterations):
         if DEBUG_MODE:
@@ -763,8 +769,8 @@ if __name__ == "__main__":
         _bounds,
         n_objectives=len(_bounds),
         n_iterations=10,
-        prior_mean=[50] * len(_bounds),  # Initial prior mean
-        prior_variance=[400] * len(_bounds),  # Initial prior variance
+        # prior_mean=[50] * len(_bounds),  # Initial prior mean
+        # prior_variance=[400] * len(_bounds),  # Initial prior variance
         initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
     )
 
