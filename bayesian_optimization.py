@@ -204,7 +204,7 @@ def rbf_kernel(x1, x2, var, length_scale=1.0):
     return var * np.exp(-0.5 * euclidean_distance_2 / (length_scale**2))
 
 
-@njit(parallel=True)
+@njit
 def update_k(
     kernel_matrix,
     x_vector,
@@ -225,7 +225,6 @@ def update_k(
 
     n_objectives = kernel_matrix.shape[0]
 
-    # TODO : avoid recalculating the kernel matrix for already evaluated points (make it grow)
     for i in prange(current_eval):  # pylint: disable=not-an-iterable
         # Compute only the upper triangle (kernel is symmetric)
         for j in range(i, current_eval):
@@ -264,7 +263,6 @@ def update_k_star(
     n_objectives = k_star.shape[0]
     n = len(input_space)
 
-    # TODO : avoid recalculating the k star for already evaluated points (make it grow)
     # Compute the same rbf kernel for all objectives, as the only difference is the variance
     for e in range(current_eval):
         eval_x = x_vector[e]
