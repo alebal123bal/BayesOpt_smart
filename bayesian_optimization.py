@@ -580,17 +580,23 @@ def is_pareto_efficient(y_vector):
     """
     Find the Pareto-efficient points from the evaluations.
     """
-    is_efficient = np.ones(y_vector.shape[0], dtype=bool)
 
-    for i in range(y_vector.shape[0]):
+    # Invert the y_vector to find the Pareto-efficient points
+    y_vector_neg = -y_vector
+
+    is_efficient = np.ones(y_vector_neg.shape[0], dtype=bool)
+
+    for i in range(y_vector_neg.shape[0]):
         if not is_efficient[i]:
             continue
-        for j in range(i + 1, y_vector.shape[0]):
-            if np.all(y_vector[j] <= y_vector[i]) and np.any(y_vector[j] < y_vector[i]):
+        for j in range(i + 1, y_vector_neg.shape[0]):
+            if np.all(y_vector_neg[j] <= y_vector_neg[i]) and np.any(
+                y_vector_neg[j] < y_vector_neg[i]
+            ):
                 is_efficient[i] = False
                 break
-            elif np.all(y_vector[i] <= y_vector[j]) and np.any(
-                y_vector[i] < y_vector[j]
+            elif np.all(y_vector_neg[i] <= y_vector_neg[j]) and np.any(
+                y_vector_neg[i] < y_vector_neg[j]
             ):
                 is_efficient[j] = False
 
