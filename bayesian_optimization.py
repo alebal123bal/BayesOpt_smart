@@ -486,7 +486,7 @@ def optimize(
     """
 
     # Total number of evaluations
-    n_total = 0
+    last_eval = 0
 
     # Preallocate normalized mean and variance arrays
     norm_mu_objectives = np.zeros(  # pylint: disable=unused-variable
@@ -495,6 +495,8 @@ def optimize(
     norm_variance_objectives = np.zeros(  # pylint: disable=unused-variable
         (n_objectives, len(input_space)), dtype=np.float64
     )
+
+    last_eval = 0
 
     for current_eval in range(n_evaluations, n_iterations):
         if DEBUG_MODE:
@@ -573,7 +575,7 @@ def optimize(
                 break
 
         # Update the total number of evaluations
-        n_total = current_eval
+        last_eval = current_eval
 
         if not already_evaluated:
             # Evaluate the function at the new point
@@ -587,7 +589,7 @@ def optimize(
                 print("🎯 Debug: Point already evaluated, stopping optimization\n")
             break
 
-    return x_vector, y_vector, n_total + 1
+    return x_vector, y_vector, last_eval + 1
 
 
 def is_pareto_efficient(y_vector):
