@@ -28,7 +28,7 @@ if DEBUG_MODE:
         if len(args) == 1 and callable(args[0]):
             # Called as @njit without parentheses
             return args[0]
-        # Called as @njit() or @njit(parallel=True)
+        # Called as @njit()
         return decorator
 
     def prange(n):
@@ -275,7 +275,7 @@ def update_k_star(
         k_star[obj_idx] *= var[obj_idx]
 
 
-@njit(parallel=True)
+@njit
 def update_mean(
     mu_objectives,
     k_star,
@@ -325,7 +325,7 @@ def update_mean(
         mu_objectives[obj_idx, :] = prior_mean[obj_idx] + k_star_t @ partial_result
 
 
-@njit(parallel=True)
+@njit
 def update_variance(
     variance_objectives,
     k_star,
