@@ -277,7 +277,7 @@ def update_k_star(
         k_star[obj_idx] *= var[obj_idx]
 
 
-@njit
+@njit(parallel=True)
 def update_mean(
     mu_objectives,
     k_star,
@@ -299,29 +299,35 @@ def update_mean(
     """
 
     n_objectives = mu_objectives.shape[0]
-    n = len(k_star[0, 0])  # Number of points in the input space
 
     for obj_idx in range(n_objectives):
-        # Precompute the inverse of the kernel matrix for the current objective
-        _kernel_matrix_inv = np.linalg.inv(
+        # Extract and ensure contiguous memory layout
+        kernel_slice = np.ascontiguousarray(
             kernel_matrix[obj_idx, :current_eval, :current_eval]
         )
 
-        # Precompute the difference between the current evaluations and the prior mean
-        _delta_y = y_vector[:current_eval, obj_idx] - prior_mean[obj_idx]
+        # Compute the inverse once
+        kernel_matrix_inv = np.ascontiguousarray(np.linalg.inv(kernel_slice))
 
-        # Precompute their dot product with the kernel vector
-        _partial_mu = _kernel_matrix_inv @ _delta_y
+        # Precompute delta_y
+        delta_y = np.ascontiguousarray(
+            y_vector[:current_eval, obj_idx] - prior_mean[obj_idx]
+        )
 
-        # Cycle the input space to compute the mean for each point
-        for i in range(n):
-            # Compute the mean prediction for the current point
-            mu_objectives[obj_idx, i] = (
-                prior_mean[obj_idx] + k_star[obj_idx, :current_eval, i].T @ _partial_mu
-            )
+        # Extract k_star for this objective and ensure contiguous
+        k_star_obj = np.ascontiguousarray(k_star[obj_idx, :current_eval, :])
+
+        # Vectorized computation: k_star.T @ (K_inv @ delta_y)
+        partial_result = kernel_matrix_inv @ delta_y
+
+        # Transpose k_star for proper matrix multiplication
+        k_star_t = np.ascontiguousarray(k_star_obj.T)  # (n_points, current_eval)
+
+        # Compute all means at once
+        mu_objectives[obj_idx, :] = prior_mean[obj_idx] + k_star_t @ partial_result
 
 
-@njit
+@njit(parallel=True)
 def update_variance(
     variance_objectives,
     k_star,
@@ -342,23 +348,30 @@ def update_variance(
     """
 
     n_objectives = variance_objectives.shape[0]
-    n = len(k_star[0, 0])  # Number of points in the input space
 
     for obj_idx in range(n_objectives):
-        # Precompute the inverse of the kernel matrix for the current objective
-        _kernel_matrix_inv = np.linalg.inv(
+        # Extract and ensure contiguous memory layout
+        kernel_slice = np.ascontiguousarray(
             kernel_matrix[obj_idx, :current_eval, :current_eval]
         )
 
-        # Cycle through the input space to compute the variance for each point
-        for i in range(n):
-            # Compute the variance prediction for the current point
-            variance_objectives[obj_idx, i] = (
-                prior_variance[obj_idx]
-                - k_star[obj_idx, :current_eval, i].T
-                @ _kernel_matrix_inv
-                @ k_star[obj_idx, :current_eval, i]
-            )
+        # Compute the inverse once
+        kernel_matrix_inv = np.ascontiguousarray(np.linalg.inv(kernel_slice))
+
+        # Extract k_star for this objective and ensure contiguous
+        k_star_obj = np.ascontiguousarray(k_star[obj_idx, :current_eval, :])
+
+        # Transpose k_star for proper matrix operations
+        k_star_t = np.ascontiguousarray(k_star_obj.T)  # (n_points, current_eval)
+
+        # Vectorized computation: k_star.T @ K_inv @ k_star
+        intermediate = kernel_matrix_inv @ k_star_obj  # (current_eval, n_points)
+
+        # Second: k_star.T @ intermediate -> (n_points,)
+        quadratic_form = np.sum(k_star_t * intermediate.T, axis=1)
+
+        # Compute all variances at once
+        variance_objectives[obj_idx, :] = prior_variance[obj_idx] - quadratic_form
 
 
 @njit
