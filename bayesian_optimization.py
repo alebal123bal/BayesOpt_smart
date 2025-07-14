@@ -82,11 +82,11 @@ def initialize_samples(x_vector, y_vector, dim, function, n_samples=3):
     # Initial guesses (keep integers for simplicity)
     initial_guesses = np.random.randint(low=0, high=X_MAX, size=(n_samples, dim))
     initial_guesses = [
-        np.array([5, 1, 1], dtype=np.int32),
-        np.array([10, 2, 2], dtype=np.int32),
-        np.array([15, 3, 3], dtype=np.int32),
-        np.array([17, 17, 17], dtype=np.int32),
-        np.array([20, 4, 4], dtype=np.int32),
+        np.array([0, 0, 0], dtype=np.int32),
+        np.array([5, 5, 5], dtype=np.int32),
+        np.array([10, 10, 10], dtype=np.int32),
+        np.array([15, 15, 15], dtype=np.int32),
+        np.array([20, 20, 20], dtype=np.int32),
     ]
     # TODO: very important to have an even initial space for u and sigma eval
 
@@ -476,12 +476,12 @@ def optimize(
     n_total = 0
 
     # Preallocate normalized mean and variance arrays
-    norm_mu_objectives = np.zeros(
+    norm_mu_objectives = np.zeros(  # pylint: disable=unused-variable
         (n_objectives, len(input_space)), dtype=np.float64
-    )  # pylint: disable=unused-variable
-    norm_variance_objectives = np.zeros(
+    )
+    norm_variance_objectives = np.zeros(  # pylint: disable=unused-variable
         (n_objectives, len(input_space)), dtype=np.float64
-    )  # pylint: disable=unused-variable
+    )
 
     for current_eval in range(n_evaluations, n_iterations):
         if DEBUG_MODE:
@@ -548,7 +548,8 @@ def optimize(
 
         if DEBUG_MODE:
             print(
-                f"🔍 Debug: Selected next point: {x_next} with hypervolume improvement {acquisition_values.max()}"
+                f"""🔍 Debug: Selected next point: {x_next} """
+                f"""with hypervolume improvement {acquisition_values.max()}"""
             )
 
         # Check if x_next is already evaluated
@@ -595,7 +596,7 @@ def is_pareto_efficient(y_vector):
             ):
                 is_efficient[i] = False
                 break
-            elif np.all(y_vector_neg[i] <= y_vector_neg[j]) and np.any(
+            if np.all(y_vector_neg[i] <= y_vector_neg[j]) and np.any(
                 y_vector_neg[i] < y_vector_neg[j]
             ):
                 is_efficient[j] = False
@@ -748,13 +749,10 @@ class BayesianOptimization:
         pareto_indices = np.where(is_efficient)[0]
         pareto_input_points = self.x_vector[pareto_indices]
 
-        if DEBUG_MODE:
-            print("📊 Pareto Analysis Results:")
+        print("📊 Pareto Analysis Results:")
 
-            for i, point in enumerate(pareto_points):
-                print(
-                    f"  Pareto Point {i + 1}: {point}, Input: {pareto_input_points[i]}"
-                )
+        for i, point in enumerate(pareto_points):
+            print(f"Input: {pareto_input_points[i]}, Pareto Point {i + 1}: {point}")
 
         return pareto_points
 
@@ -774,7 +772,7 @@ if __name__ == "__main__":
         toy_function,
         _bounds,
         n_objectives=len(_bounds),
-        n_iterations=10,
+        n_iterations=30,
         # prior_mean=[50] * len(_bounds),  # Initial prior mean
         # prior_variance=[400] * len(_bounds),  # Initial prior variance
         initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
@@ -782,7 +780,7 @@ if __name__ == "__main__":
 
     optimizer.optimize(
         beta=2.0,
-        length_scale=3.0,
+        length_scale=1.0,
     )
 
     end_time = time.time()
