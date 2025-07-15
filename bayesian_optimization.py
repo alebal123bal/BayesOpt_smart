@@ -397,16 +397,14 @@ def update_ucb(
     """
 
     n_objectives = mu_objectives.shape[0]
-    n_points = len(ucb[0])
 
-    # Compute the UCB for each point
+    # Compute the UCB for each point vectorized
     for obj_idx in range(n_objectives):
-        for i in range(n_points):
-            ucb[obj_idx, i] = upper_confidence_bound(
-                mu_objectives[obj_idx, i],
-                variance_objectives[obj_idx, i],
-                beta,
-            )
+        ucb[obj_idx] = upper_confidence_bound(
+            mu_objectives[obj_idx],
+            variance_objectives[obj_idx],
+            beta,
+        )
 
 
 @njit
