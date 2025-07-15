@@ -324,7 +324,7 @@ def update_mean(
 def update_variance(
     variance_objectives,
     k_star,
-    kernel_matrix,
+    inverted_kernel_matrix,
     prior_variance,
     current_eval,
 ):
@@ -335,7 +335,7 @@ def update_variance(
     Args:
         variance_objectives (np.ndarray): Preallocated variance predictions for each objective.
         k_star (np.ndarray): Kernel vector for the new point.
-        kernel_matrix (np.ndarray): Kernel matrix for the training points.
+        inverted_kernel_matrix (np.ndarray): Inverted kernel matrix for the training points.
         prior_variance (np.ndarray): Prior variance for each objective.
         current_eval (int): Current number of evaluations.
     """
@@ -343,13 +343,8 @@ def update_variance(
     n_objectives = variance_objectives.shape[0]
 
     for obj_idx in range(n_objectives):
-        # Extract and ensure contiguous memory layout
-        kernel_slice = np.ascontiguousarray(
-            kernel_matrix[obj_idx, :current_eval, :current_eval]
-        )
-
-        # Compute the inverse once
-        kernel_matrix_inv = np.ascontiguousarray(np.linalg.inv(kernel_slice))
+        # Access the inverted kernel matrix for this objective
+        kernel_matrix_inv = inverted_kernel_matrix[obj_idx]
 
         # Extract k_star for this objective and ensure contiguous
         k_star_obj = np.ascontiguousarray(k_star[obj_idx, :current_eval, :])
@@ -537,7 +532,7 @@ def optimize(
         update_variance(
             variance_objectives=variance_objectives,
             k_star=k_star,
-            kernel_matrix=kernel_matrices,
+            inverted_kernel_matrix=kernel_matrix_inv,
             prior_variance=prior_variance,
             current_eval=current_eval,
         )
