@@ -148,41 +148,41 @@ def compute_prior_variance(y_vector, n_evaluations, n_objectives):
 
 
 @njit
-def normalize_mean(mu, norm_mu):
+def invert_k(current_eval, kernel_matrix, prior_variance):
     """
-    Scale the mean predictions to a range of [0 + eps, 1].
+    Invert the kernel matrix for each objective.
 
     Args:
-        mu (np.ndarray): Mean predictions for each objective.
-        norm_mu (np.ndarray): Normalized mean predictions for each objective.
+        current_eval (int): Current number of evaluations.
+        kernel_matrix (np.ndarray): Kernel matrix for the training points.
+        prior_variance (np.ndarray): Prior variance for each objective.
+
+    Returns:
+        np.ndarray: Inverted kernel matrix for each objective.
     """
 
-    for obj_idx in range(mu.shape[0]):
-        max_value = np.max(mu[obj_idx])
-        min_value = np.min(mu[obj_idx])
-        eps = 1e-15  # Small epsilon to avoid division by zero
-        norm_mu[obj_idx] = (mu[obj_idx] - min_value + eps) / (
-            max_value - min_value + eps
+    n_objectives = kernel_matrix.shape[0]
+
+    # Allocate a contiguous array for the inverted kernel matrix
+    kernel_matrix_inv = np.zeros(
+        (n_objectives, current_eval, current_eval), dtype=np.float64
+    )
+
+    # Extract and ensure contiguous memory layout
+    base_matrix = np.ascontiguousarray(
+        kernel_matrix[0, :current_eval, :current_eval] / prior_variance[0]
+    )
+
+    # Compute the inverse once
+    base_matrix_inv = np.ascontiguousarray(np.linalg.inv(base_matrix))
+
+    for obj_idx in range(n_objectives):
+        # Scale with prior variance
+        kernel_matrix_inv[obj_idx] = np.ascontiguousarray(
+            base_matrix_inv / prior_variance[obj_idx]
         )
 
-    return norm_mu
-
-
-@njit
-def normalize_variance(var, norm_var):
-    """
-    Scale in-place the variance predictions to a range of [eps, 1].
-
-    Args:
-        var (np.ndarray): Variance predictions for each objective.
-        norm_var (np.ndarray): Normalized variance predictions for each objective.
-    """
-
-    for obj_idx in range(var.shape[0]):
-        max_value = np.max(var[obj_idx])
-        norm_var[obj_idx] = var[obj_idx] / max_value
-
-    return norm_var
+    return kernel_matrix_inv
 
 
 @njit
@@ -279,7 +279,7 @@ def update_k_star(
 def update_mean(
     mu_objectives,
     k_star,
-    kernel_matrix,
+    inverted_kernel_matrix,
     y_vector,
     prior_mean,
     current_eval,
@@ -290,8 +290,8 @@ def update_mean(
     Args:
         mu_objectives (np.ndarray): Preallocated mean predictions for each objective.
         k_star (np.ndarray): Kernel vector for the new point.
-        kernel_matrix (np.ndarray): Kernel matrix for the training points.
-        y_vector (np.ndarray): Function values at the training points.
+        inverted_kernel_matrix (np.ndarray): Inverted kernel matrix for the training points.
+        y_vector (np.ndarray): Objective values at evaluated points.
         prior_mean (np.ndarray): Prior mean for each objective.
         current_eval (int): Current number of evaluations.
     """
@@ -299,13 +299,8 @@ def update_mean(
     n_objectives = mu_objectives.shape[0]
 
     for obj_idx in range(n_objectives):
-        # Extract and ensure contiguous memory layout
-        kernel_slice = np.ascontiguousarray(
-            kernel_matrix[obj_idx, :current_eval, :current_eval]
-        )
-
-        # Compute the inverse once
-        kernel_matrix_inv = np.ascontiguousarray(np.linalg.inv(kernel_slice))
+        # Access the inverted kernel matrix for this objective
+        kernel_matrix_inv = inverted_kernel_matrix[obj_idx]
 
         # Precompute delta_y
         delta_y = np.ascontiguousarray(
@@ -511,6 +506,13 @@ def optimize(
             length_scale=length_scale,
         )
 
+        # Invert matrix
+        kernel_matrix_inv = invert_k(
+            current_eval=current_eval,
+            kernel_matrix=kernel_matrices,
+            prior_variance=prior_variance,
+        )
+
         # Update k star for each objective
         update_k_star(
             k_star=k_star,
@@ -525,7 +527,7 @@ def optimize(
         update_mean(
             mu_objectives=mu_objectives,
             k_star=k_star,
-            kernel_matrix=kernel_matrices,
+            inverted_kernel_matrix=kernel_matrix_inv,
             y_vector=y_vector,
             prior_mean=prior_mean,
             current_eval=current_eval,
