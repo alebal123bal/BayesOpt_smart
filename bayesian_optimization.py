@@ -65,46 +65,97 @@ def toy_function(x):
 
 
 @njit
-def initialize_samples(x_vector, y_vector, dim, function, n_samples=3):
+def initialize_samples(x_vector, y_vector, bounds, function, n_samples=8):
     """
-    Initialize the first few sample points for the optimization.
+    Initialize sample points using uniform grid sampling for maximum coverage.
 
     Args:
         x_vector (np.ndarray): Array to store evaluated points.
         y_vector (np.ndarray): Array to store objective values at evaluated points.
-        dim (int): Dimensionality of the input space.
+        bounds (np.ndarray): Array of (min, max) bounds for each dimension.
         function (callable): The function to optimize.
         n_samples (int): Number of initial samples to generate.
 
     Returns:
         int: Number of evaluations performed.
     """
-    # Initial guesses (keep integers for simplicity)
-    initial_guesses = np.random.randint(low=0, high=X_MAX, size=(n_samples, dim))
-    initial_guesses = [
-        np.array([0, 0, 0], dtype=np.int32),
-        np.array([5, 5, 5], dtype=np.int32),
-        np.array([10, 10, 10], dtype=np.int32),
-        np.array([15, 15, 15], dtype=np.int32),
-        np.array([20, 20, 20], dtype=np.int32),
-    ]
-    # TODO: very important to have an even initial space for u and sigma eval
 
+    dim = len(bounds)
+
+    # Calculate grid size for uniform distribution
+    # For n_samples points in dim dimensions: grid_size = ceil(n_samples^(1/dim))
+    grid_size = int(np.ceil(n_samples ** (1.0 / dim)))
+
+    # Generate uniform grid points
+    initial_guesses = generate_uniform_grid(bounds, dim, grid_size, n_samples)
+
+    # Evaluate all initial samples
     n_evaluations = 0
-
     for i in range(len(initial_guesses)):  # pylint: disable=consider-using-enumerate
         x_vector[i] = initial_guesses[i]
         y_vector[i] = function(x_vector[i])
         n_evaluations += 1
+
         if DEBUG_MODE:
             print(
                 f"➡️  Debug: Initial sample {i+1}: x = {x_vector[i]}, y = {y_vector[i]}"
             )
 
     if DEBUG_MODE:
-        print(f"🎯 Debug: Initialized {n_evaluations} samples.\n")
+        print(f"🎯 Debug: Initialized {n_evaluations} samples uniformly.\n")
 
     return n_evaluations
+
+
+@njit
+def generate_uniform_grid(bounds, dim, grid_size, max_samples):
+    """
+    Generate uniformly distributed grid points within bounds.
+
+    Args:
+        bounds (np.ndarray): Array of (min, max) bounds for each dimension.
+        dim (int): Number of dimensions.
+        grid_size (int): Number of points per dimension.
+        max_samples (int): Maximum number of samples to return.
+
+    Returns:
+        list: List of uniformly distributed sample points.
+    """
+
+    # Create grid coordinates for each dimension
+    grid_coords = []
+    for d in range(dim):
+        min_val, max_val = bounds[d][0], bounds[d][1]
+
+        if grid_size == 1:
+            # If only one point per dimension, use midpoint
+            coords = np.array([(min_val + max_val) // 2], dtype=np.int32)
+        else:
+            # Create evenly spaced points including endpoints
+            coords = np.linspace(min_val, max_val, grid_size).astype(np.int32)
+
+        grid_coords.append(coords)
+
+    # Generate all combinations of grid coordinates
+    samples = []
+    total_combinations = grid_size**dim
+
+    for i in range(min(total_combinations, max_samples)):
+        sample = np.zeros(dim, dtype=np.int32)
+
+        # Convert linear index to multi-dimensional coordinates
+        temp_i = i
+        for d in range(dim):
+            coord_idx = temp_i % grid_size
+            sample[d] = grid_coords[d][coord_idx]
+            temp_i //= grid_size
+
+        samples.append(sample)
+
+        if len(samples) >= max_samples:
+            break
+
+    return samples
 
 
 @njit
@@ -735,11 +786,11 @@ class BayesianOptimization:
 
         # Initial guesses
         self.n_evaluations = initialize_samples(
-            self.x_vector,
-            self.y_vector,
-            self.dim,
-            self.function,
-            self.initial_samples,
+            x_vector=self.x_vector,
+            y_vector=self.y_vector,
+            bounds=np.array(self.bounds, dtype=np.int32),
+            function=self.function,
+            n_samples=self.initial_samples,
         )
 
         # If prior mean is not provided, calculate it from initial samples
@@ -827,14 +878,14 @@ if __name__ == "__main__":
         toy_function,
         _bounds,
         n_objectives=len(_bounds),
-        n_iterations=30,
+        n_iterations=40,
         # prior_mean=[50] * len(_bounds),  # Initial prior mean
         # prior_variance=[400] * len(_bounds),  # Initial prior variance
         initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
     )
 
     optimizer.optimize(
-        beta=2.0,
+        beta=1.0,
         length_scale=2.0,
     )
 
