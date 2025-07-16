@@ -58,7 +58,7 @@ def toy_function(x):
         np.ndarray: Output array containing [f(x), g(x), h(x)].
     """
     f_x = -((x[0] - 12) ** 2) + 100
-    g_x = -((x[1] - 1) ** 2) + 20
+    g_x = -((x[1] - 1) ** 4) + 20
     h_x = -((x[2] - 5) ** 2) + 120
 
     return np.array([f_x, g_x, h_x])
@@ -365,15 +365,15 @@ def update_variance(
 @njit
 def upper_confidence_bound(mu, variance, beta=2.0):
     """
-    Compute the upper confidence bound for a Gaussian process.
+    Compute the upper confidence bound for a single objective, vectorized.
 
     Args:
-        mu (float): Mean of the Gaussian process at a point.
-        variance (float): Variance of the Gaussian process at a point.
+        mu (np.ndarray): Mean predictions for the objective.
+        variance (np.ndarray): Variance predictions for the objective.
         beta (float): Exploration-exploitation trade-off parameter.
 
     Returns:
-        float: Upper confidence bound value.
+        np.ndarray: Upper confidence bound values for the objective.
     """
 
     return mu + beta * np.sqrt(np.abs(variance))
