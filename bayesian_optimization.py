@@ -363,6 +363,41 @@ def update_variance(
 
 
 @njit
+def standardize_objectives(
+    std_mu_objectives,
+    std_variance_objectives,
+    mu_objectives,
+    variance_objectives,
+    prior_mean,
+    prior_variance,
+):
+    """
+    Standardize objectives to have mean=0, std=1 for fair comparison.
+
+    Args:
+        std_mu_objectives (np.ndarray): Preallocated standardized mean for each objective.
+        std_variance_objectives (np.ndarray): Preallocated standardized variance for each objective.
+        mu_objectives (np.ndarray): Mean predictions for each objective.
+        variance_objectives (np.ndarray): Variance predictions for each objective.
+        prior_mean (np.ndarray): Prior mean for each objective.
+        prior_variance (np.ndarray): Prior variance for each objective.
+    """
+
+    n_objectives = mu_objectives.shape[0]
+
+    for obj_idx in range(n_objectives):
+        # Standardize mean: (mu - prior_mean) / sqrt(prior_variance)
+        std_mu_objectives[obj_idx] = (
+            mu_objectives[obj_idx] - prior_mean[obj_idx]
+        ) / np.sqrt(prior_variance[obj_idx])
+
+        # Standardize variance: var / prior_variance
+        std_variance_objectives[obj_idx] = (
+            variance_objectives[obj_idx] / prior_variance[obj_idx]
+        )
+
+
+@njit
 def upper_confidence_bound(mu, variance, beta=2.0):
     """
     Compute the upper confidence bound for a single objective, vectorized.
@@ -433,6 +468,8 @@ def optimize(
     k_star,
     mu_objectives,
     variance_objectives,
+    std_mu_objectives,
+    std_variance_objectives,
     ucb,
     acquisition_values,
     input_space,
@@ -441,7 +478,7 @@ def optimize(
     reference_point,  # pylint: disable=unused-argument
     n_evaluations,
     n_iterations,
-    n_objectives,
+    n_objectives,  # pylint: disable=unused-argument
     function,
     beta=2.0,
     length_scale=3.0,
@@ -472,16 +509,6 @@ def optimize(
     """
 
     # Total number of evaluations
-    last_eval = 0
-
-    # Preallocate normalized mean and variance arrays
-    norm_mu_objectives = np.zeros(  # pylint: disable=unused-variable
-        (n_objectives, len(input_space)), dtype=np.float64
-    )
-    norm_variance_objectives = np.zeros(  # pylint: disable=unused-variable
-        (n_objectives, len(input_space)), dtype=np.float64
-    )
-
     last_eval = 0
 
     for current_eval in range(n_evaluations, n_iterations):
@@ -535,13 +562,21 @@ def optimize(
             current_eval=current_eval,
         )
 
-        # Normalize the mean and variance predictions for the hypervolume improvement
+        # Standardize the mean and variance
+        standardize_objectives(
+            std_mu_objectives=std_mu_objectives,
+            std_variance_objectives=std_variance_objectives,
+            mu_objectives=mu_objectives,
+            variance_objectives=variance_objectives,
+            prior_mean=prior_mean,
+            prior_variance=prior_variance,
+        )
 
         # Update Upper Confidence Bound (UCB)
         update_ucb(
             ucb=ucb,
-            mu_objectives=mu_objectives,
-            variance_objectives=variance_objectives,
+            mu_objectives=std_mu_objectives,
+            variance_objectives=std_variance_objectives,
             beta=beta,
         )
 
@@ -682,6 +717,16 @@ class BayesianOptimization:
             (n_objectives, len(self.input_space)), dtype=np.float64
         )
 
+        # Preallocate the standardized mean for each objective
+        self.std_mu_objectives = np.zeros(
+            (n_objectives, len(self.input_space)), dtype=np.float64
+        )
+
+        # Preallocate the standardized variance for each objective
+        self.std_variance_objectives = np.zeros(
+            (n_objectives, len(self.input_space)), dtype=np.float64
+        )
+
         # Preallocate the upper confidence bound acquisition function values for each objective
         self.ucb = np.zeros((n_objectives, len(self.input_space)), dtype=np.float64)
 
@@ -729,6 +774,8 @@ class BayesianOptimization:
             k_star=self.k_star,
             mu_objectives=self.mu_objectives,
             variance_objectives=self.variance_objectives,
+            std_mu_objectives=self.std_mu_objectives,
+            std_variance_objectives=self.std_variance_objectives,
             ucb=self.ucb,
             acquisition_values=self.acquisition_values,
             input_space=self.input_space,
@@ -788,7 +835,7 @@ if __name__ == "__main__":
 
     optimizer.optimize(
         beta=2.0,
-        length_scale=1.0,
+        length_scale=2.0,
     )
 
     end_time = time.time()
