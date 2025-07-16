@@ -28,7 +28,7 @@ if DEBUG_MODE:
         if len(args) == 1 and callable(args[0]):
             # Called as @njit without parentheses
             return args[0]
-        # Called as @njit() or @njit(parallel=True)
+        # Called as @njit()
         return decorator
 
     def prange(n):
@@ -81,9 +81,18 @@ def initialize_samples(x_vector, y_vector, dim, function, n_samples=3):
     """
     # Initial guesses (keep integers for simplicity)
     initial_guesses = np.random.randint(low=0, high=X_MAX, size=(n_samples, dim))
+    initial_guesses = [
+        np.array([0, 0, 0], dtype=np.int32),
+        np.array([5, 5, 5], dtype=np.int32),
+        np.array([10, 10, 10], dtype=np.int32),
+        np.array([15, 15, 15], dtype=np.int32),
+        np.array([20, 20, 20], dtype=np.int32),
+    ]
+    # TODO: very important to have an even initial space for u and sigma eval
+
     n_evaluations = 0
 
-    for i in range(n_samples):
+    for i in range(len(initial_guesses)):  # pylint: disable=consider-using-enumerate
         x_vector[i] = initial_guesses[i]
         y_vector[i] = function(x_vector[i])
         n_evaluations += 1
@@ -139,165 +148,281 @@ def compute_prior_variance(y_vector, n_evaluations, n_objectives):
 
 
 @njit
-def rbf_kernel(x1, x2, sigma, length_scale=1.0):
+def invert_k(current_eval, kernel_matrix, prior_variance):
+    """
+    Invert the kernel matrix for each objective.
+
+    Args:
+        current_eval (int): Current number of evaluations.
+        kernel_matrix (np.ndarray): Kernel matrix for the training points.
+        prior_variance (np.ndarray): Prior variance for each objective.
+
+    Returns:
+        np.ndarray: Inverted kernel matrix for each objective.
+    """
+
+    n_objectives = kernel_matrix.shape[0]
+
+    # Allocate a contiguous array for the inverted kernel matrix
+    kernel_matrix_inv = np.zeros(
+        (n_objectives, current_eval, current_eval), dtype=np.float64
+    )
+
+    # Extract and ensure contiguous memory layout
+    base_matrix = np.ascontiguousarray(
+        kernel_matrix[0, :current_eval, :current_eval] / prior_variance[0]
+    )
+
+    # Compute the inverse once
+    base_matrix_inv = np.ascontiguousarray(np.linalg.inv(base_matrix))
+
+    for obj_idx in range(n_objectives):
+        # Scale with prior variance
+        kernel_matrix_inv[obj_idx] = np.ascontiguousarray(
+            base_matrix_inv / prior_variance[obj_idx]
+        )
+
+    return kernel_matrix_inv
+
+
+@njit
+def rbf_kernel(x1, x2, var, length_scale=1.0):
     """
     Radial basis function (RBF) kernel for multi-dimensional inputs.
 
     Args:
-        x1 (np.ndarray): First input array.
-        x2 (np.ndarray): Second input array.
-        sigma (float): Standard deviation for the kernel.
+        x1 (np.ndarray): First input point in the hyperplane.
+        x2 (np.ndarray): Second input point in the hyperplane.
+        var (float): Variance parameter for the kernel.
         length_scale (float): Length scale parameter for the kernel.
 
     Returns:
         float: The value of the RBF kernel between x1 and x2.
     """
-    distance_squared = 0.0
-    for i in range(len(x1)):  # pylint: disable=consider-using-enumerate
-        distance_squared += (x1[i] - x2[i]) ** 2
-    return sigma**2 * np.exp(-0.5 * distance_squared / (length_scale**2))
+
+    euclidean_distance_2 = np.sum((x1 - x2) ** 2)
+    return var * np.exp(-0.5 * euclidean_distance_2 / (length_scale**2))
 
 
 @njit
-def compute_k_star(x_vector, x_star, sigma, length_scale=1.0):
-    """
-    Compute the kernel vector between the training points and a new point.
-
-    Args:
-        x_vector (np.ndarray): Training points.
-        x_star (np.ndarray): New point.
-        sigma (float): Standard deviation for the kernel.
-        length_scale (float): Length scale parameter for the kernel.
-
-    Returns:
-        np.ndarray: Kernel vector between training points and the new point.
-    """
-    n = len(x_vector)
-    k_star = np.empty(n, dtype=np.float64)  # Preallocate array for the kernel vector
-
-    for i in range(n):
-        k_star[i] = rbf_kernel(x_vector[i], x_star, sigma, length_scale)
-
-    return k_star
-
-
-@njit(parallel=True)
-def compute_k(x_vector, sigma, length_scale=1.0):
+def update_k(
+    kernel_matrix,
+    x_vector,
+    current_eval,
+    var,
+    length_scale=1.0,
+):
     """
     Compute the kernel matrix for the training points.
 
     Args:
+        kernel_matrix (np.ndarray): Preallocated kernel matrix to fill.
         x_vector (np.ndarray): Training points.
-        sigma (float): Standard deviation for the kernel.
+        current_eval (int): Current number of evaluations.
+        var (float): Variance parameter for the kernel.
         length_scale (float): Length scale parameter for the kernel.
-
-    Returns:
-        np.ndarray: Kernel matrix for the training points.
     """
-    n = len(x_vector)
-    kernel_matrix = np.empty((n, n), dtype=np.float64)  # Preallocate the matrix
 
-    for i in prange(n):  # pylint: disable=not-an-iterable
-        for j in range(i, n):  # Compute only the upper triangle (kernel is symmetric)
-            value = rbf_kernel(x_vector[i], x_vector[j], sigma, length_scale)
-            kernel_matrix[i, j] = value
-            kernel_matrix[j, i] = value  # Fill the symmetric element
+    n_objectives = kernel_matrix.shape[0]
 
-    return kernel_matrix
+    for i in prange(current_eval):  # pylint: disable=not-an-iterable
+        # Compute only the upper triangle (kernel is symmetric)
+        for j in range(i, current_eval):
+            kernel_matrix[:, i, j] = rbf_kernel(
+                x_vector[i], x_vector[j], 1.0, length_scale
+            )
+            # Symmetric entry
+            kernel_matrix[:, j, i] = kernel_matrix[:, i, j]
+
+    # The only difference in the matrices for different objectives is the prior variance
+    for obj_idx in range(n_objectives):
+        kernel_matrix[obj_idx] *= var[obj_idx]
 
 
 @njit
-def compute_delta_mu(k_star, kernel_matrix, y_vector, prior_mean):
+def update_k_star(
+    k_star,
+    x_vector,
+    input_space,
+    current_eval,
+    var,
+    length_scale=1.0,
+):
     """
-    Update the mean of the Gaussian process at a new point.
+    Update the kernel vector for a new point based on the training points.
 
     Args:
-        k_star (np.ndarray): Kernel vector for the new point.
-        kernel_matrix (np.ndarray): Kernel matrix for the training points.
-        y_vector (np.ndarray): Function values at the training points.
-        prior_mean (float): Prior mean of the Gaussian process.
-
-    Returns:
-        float: Delta mean at the new point to be added to precomputed vector.
+        k_star (np.ndarray): Preallocated kernel vector to fill up to the current_eval.
+        x_vector (np.ndarray): Training points.
+        input_space (np.ndarray): Discretized input space.
+        current_eval (int): Current number of evaluations.
+        var (np.ndarray): Variance parameter for the kernel.
+        length_scale (float): Length scale parameter for the kernel.
     """
-    kernel_matrix_inv = np.linalg.inv(kernel_matrix)
-    mu = k_star.T @ kernel_matrix_inv @ (y_vector - prior_mean)
-    return mu
+
+    n_objectives = k_star.shape[0]
+    n = len(input_space)
+
+    # Compute the same rbf kernel for all objectives, as the only difference is the variance
+    for e in range(current_eval):
+        eval_x = x_vector[e]
+        for i in range(n):
+            x_star = input_space[i]
+            k_star[:, e, i] = rbf_kernel(eval_x, x_star, 1.0, length_scale)
+
+    # Modify the  k_star based on the prior variance for each objective
+    for obj_idx in range(n_objectives):
+        k_star[obj_idx] *= var[obj_idx]
 
 
 @njit
-def compute_delta_variance(k_star, kernel_matrix):
+def update_mean(
+    mu_objectives,
+    k_star,
+    inverted_kernel_matrix,
+    y_vector,
+    prior_mean,
+    current_eval,
+):
     """
-    Update the variance of the Gaussian process at a new point.
+    Update the mean predictions for each objective based on the kernel vector and training points.
 
     Args:
+        mu_objectives (np.ndarray): Preallocated mean predictions for each objective.
         k_star (np.ndarray): Kernel vector for the new point.
-        kernel_matrix (np.ndarray): Kernel matrix for the training points.
-
-    Returns:
-        float: Delta variance at the new point to be added to precomputed vector.
+        inverted_kernel_matrix (np.ndarray): Inverted kernel matrix for the training points.
+        y_vector (np.ndarray): Objective values at evaluated points.
+        prior_mean (np.ndarray): Prior mean for each objective.
+        current_eval (int): Current number of evaluations.
     """
-    kernel_matrix_inv = np.linalg.inv(kernel_matrix)
-    variance = -k_star.T @ kernel_matrix_inv @ k_star
-    return variance
+
+    n_objectives = mu_objectives.shape[0]
+
+    for obj_idx in range(n_objectives):
+        # Access the inverted kernel matrix for this objective
+        kernel_matrix_inv = inverted_kernel_matrix[obj_idx]
+
+        # Precompute delta_y
+        delta_y = np.ascontiguousarray(
+            y_vector[:current_eval, obj_idx] - prior_mean[obj_idx]
+        )
+
+        # Extract k_star for this objective and ensure contiguous
+        k_star_obj = np.ascontiguousarray(k_star[obj_idx, :current_eval, :])
+
+        # Vectorized computation: k_star.T @ (K_inv @ delta_y)
+        partial_result = kernel_matrix_inv @ delta_y
+
+        # Transpose k_star for proper matrix multiplication
+        k_star_t = np.ascontiguousarray(k_star_obj.T)  # (n_points, current_eval)
+
+        # Compute all means at once
+        mu_objectives[obj_idx, :] = prior_mean[obj_idx] + k_star_t @ partial_result
+
+
+@njit
+def update_variance(
+    variance_objectives,
+    k_star,
+    inverted_kernel_matrix,
+    prior_variance,
+    current_eval,
+):
+    """
+    Update the variance predictions for each objective based on the kernel vector
+    and training points.
+
+    Args:
+        variance_objectives (np.ndarray): Preallocated variance predictions for each objective.
+        k_star (np.ndarray): Kernel vector for the new point.
+        inverted_kernel_matrix (np.ndarray): Inverted kernel matrix for the training points.
+        prior_variance (np.ndarray): Prior variance for each objective.
+        current_eval (int): Current number of evaluations.
+    """
+
+    n_objectives = variance_objectives.shape[0]
+
+    for obj_idx in range(n_objectives):
+        # Access the inverted kernel matrix for this objective
+        kernel_matrix_inv = inverted_kernel_matrix[obj_idx]
+
+        # Extract k_star for this objective and ensure contiguous
+        k_star_obj = np.ascontiguousarray(k_star[obj_idx, :current_eval, :])
+
+        # Transpose k_star for proper matrix operations
+        k_star_t = np.ascontiguousarray(k_star_obj.T)  # (n_points, current_eval)
+
+        # Vectorized computation: k_star.T @ K_inv @ k_star
+        intermediate = kernel_matrix_inv @ k_star_obj  # (current_eval, n_points)
+
+        # Second: k_star.T @ intermediate -> (n_points,)
+        quadratic_form = np.sum(k_star_t * intermediate.T, axis=1)
+
+        # Compute all variances at once
+        variance_objectives[obj_idx, :] = prior_variance[obj_idx] - quadratic_form
 
 
 @njit
 def upper_confidence_bound(mu, variance, beta=2.0):
     """
-    Compute the upper confidence bound for a Gaussian process.
+    Compute the upper confidence bound for a single objective, vectorized.
 
     Args:
-        mu (float): Mean of the Gaussian process at a point.
-        variance (float): Variance of the Gaussian process at a point.
+        mu (np.ndarray): Mean predictions for the objective.
+        variance (np.ndarray): Variance predictions for the objective.
         beta (float): Exploration-exploitation trade-off parameter.
 
     Returns:
-        float: Upper confidence bound value.
+        np.ndarray: Upper confidence bound values for the objective.
     """
 
     return mu + beta * np.sqrt(np.abs(variance))
 
 
 @njit
-def hypervolume_improvement(
+def update_ucb(
+    ucb,
     mu_objectives,
     variance_objectives,
-    reference_point,  # pylint: disable=unused-argument
     beta=2.0,
 ):
     """
-    Compute a multi-objective acquisition function based on hypervolume improvement.
-    This is a simplified version - you may want to use more sophisticated methods.
+    Update the upper confidence bound acquisition function values.
 
     Args:
+        ucb (np.ndarray): Preallocated upper confidence bound values.
         mu_objectives (np.ndarray): Mean predictions for each objective.
         variance_objectives (np.ndarray): Variance predictions for each objective.
-        reference_point (np.ndarray): Reference point for hypervolume calculation.
-        beta (float): Exploration parameter.
-
-    Returns:
-        float: Acquisition function value.
+        beta (float): Exploration-exploitation trade-off parameter.
     """
 
-    n_objectives = len(mu_objectives)
+    n_objectives = mu_objectives.shape[0]
 
-    # Preallocate ucb_values array
-    ucb_values = np.empty(n_objectives, dtype=np.float64)
-
-    # Compute UCB values for each objective
-    for i in range(n_objectives):
-        ucb_values[i] = upper_confidence_bound(
-            mu_objectives[i], variance_objectives[i], beta
+    # Compute the UCB for each point vectorized
+    for obj_idx in range(n_objectives):
+        ucb[obj_idx] = upper_confidence_bound(
+            mu_objectives[obj_idx],
+            variance_objectives[obj_idx],
+            beta,
         )
 
-    # Preallocate weights array (equal weights for all objectives)
-    weights = np.ones(n_objectives, dtype=np.float64)
 
-    # Compute weighted sum of UCB values
-    acquisition_value = np.dot(weights, ucb_values)
+@njit
+def update_hypervolume_improvement(
+    acquisition_values,
+    ucb,
+):
+    """
+    Update the hypervolume improvement acquisition function values.
 
-    return acquisition_value
+    Args:
+        ucb (np.ndarray): Upper confidence bound values for each point.
+    """
+    n_points = len(acquisition_values)
+
+    # Compute the hypervolume improvement acquisition function values
+    for i in range(n_points):
+        acquisition_values[i] = np.sum(ucb[:, i])
 
 
 @njit
@@ -305,13 +430,15 @@ def optimize(
     x_vector,
     y_vector,
     kernel_matrices,
+    k_star,
     mu_objectives,
     variance_objectives,
+    ucb,
     acquisition_values,
     input_space,
     prior_mean,
     prior_variance,
-    reference_point,
+    reference_point,  # pylint: disable=unused-argument
     n_evaluations,
     n_iterations,
     n_objectives,
@@ -344,134 +471,145 @@ def optimize(
         tuple: Updated x_vector, y_vector, and number of evaluations.
     """
 
-    for f in range(n_evaluations, n_iterations):  # pylint: disable=unused-variable
+    # Total number of evaluations
+    last_eval = 0
+
+    # Preallocate normalized mean and variance arrays
+    norm_mu_objectives = np.zeros(  # pylint: disable=unused-variable
+        (n_objectives, len(input_space)), dtype=np.float64
+    )
+    norm_variance_objectives = np.zeros(  # pylint: disable=unused-variable
+        (n_objectives, len(input_space)), dtype=np.float64
+    )
+
+    last_eval = 0
+
+    for current_eval in range(n_evaluations, n_iterations):
         if DEBUG_MODE:
-            print(f"🔄 Debug: Starting iteration {f}, n_evaluations={n_evaluations}")
-
-        # Compute kernel matrices for each objective
-        for obj_idx in range(n_objectives):
-            kernel_matrices[obj_idx, :n_evaluations, :n_evaluations] = compute_k(
-                x_vector[:n_evaluations],
-                sigma=np.sqrt(np.abs(prior_variance[obj_idx])),
-                length_scale=length_scale,
+            print(
+                f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={n_evaluations}"
             )
 
-        # Loop through the input space to update mean and variance predictions
-        for i in range(len(input_space)):  # pylint: disable=consider-using-enumerate
-            x_star = input_space[i]
+        # Update kernel matrices for each objective
+        update_k(
+            kernel_matrix=kernel_matrices,
+            x_vector=x_vector,
+            current_eval=current_eval,
+            var=prior_variance,
+            length_scale=length_scale,
+        )
 
-            # Compute the kernel vector for the new point
-            k_star = compute_k_star(
-                x_vector[:n_evaluations],
-                x_star,
-                sigma=np.sqrt(np.abs(prior_variance[obj_idx])),
-                length_scale=length_scale,
-            )
+        # Invert matrix
+        kernel_matrix_inv = invert_k(
+            current_eval=current_eval,
+            kernel_matrix=kernel_matrices,
+            prior_variance=prior_variance,
+        )
 
-            # Update mean and variance for each objective
-            for obj_idx in range(n_objectives):
-                # Update mean
-                delta_mu = compute_delta_mu(
-                    k_star=k_star,
-                    kernel_matrix=kernel_matrices[
-                        obj_idx, :n_evaluations, :n_evaluations
-                    ],
-                    y_vector=y_vector[:n_evaluations, obj_idx],
-                    prior_mean=prior_mean[obj_idx],
-                )
+        # Update k star for each objective
+        update_k_star(
+            k_star=k_star,
+            x_vector=x_vector,
+            input_space=input_space,
+            current_eval=current_eval,
+            var=prior_variance,
+            length_scale=length_scale,
+        )
 
-                mu_objectives[obj_idx, i] = prior_mean[obj_idx] + delta_mu
+        # Update mean predictions for each objective
+        update_mean(
+            mu_objectives=mu_objectives,
+            k_star=k_star,
+            inverted_kernel_matrix=kernel_matrix_inv,
+            y_vector=y_vector,
+            prior_mean=prior_mean,
+            current_eval=current_eval,
+        )
 
-                # Update variance
-                delta_variance = compute_delta_variance(
-                    k_star=k_star,
-                    kernel_matrix=kernel_matrices[
-                        obj_idx, :n_evaluations, :n_evaluations
-                    ],
-                )
+        # Update variance predictions for each objective
+        update_variance(
+            variance_objectives=variance_objectives,
+            k_star=k_star,
+            inverted_kernel_matrix=kernel_matrix_inv,
+            prior_variance=prior_variance,
+            current_eval=current_eval,
+        )
 
-                variance_objectives[obj_idx, i] = (
-                    prior_variance[obj_idx] + delta_variance
-                )
+        # Normalize the mean and variance predictions for the hypervolume improvement
 
-                # TODO: rescale mu and var
+        # Update Upper Confidence Bound (UCB)
+        update_ucb(
+            ucb=ucb,
+            mu_objectives=mu_objectives,
+            variance_objectives=variance_objectives,
+            beta=beta,
+        )
 
-        # Loop through the input space to compute acquisition function values
-        for i in range(len(input_space)):
-            for obj_idx in range(n_objectives):
-                # Compute multi-objective acquisition function
-                acquisition_values[i] = hypervolume_improvement(
-                    mu_objectives[:, i],
-                    variance_objectives[:, i],
-                    reference_point,
-                    beta=beta,
-                )
+        # Update hypervolume improvement acquisition function
+        update_hypervolume_improvement(
+            acquisition_values=acquisition_values,
+            ucb=ucb,
+        )
 
         # Select the next point to evaluate
         x_next = input_space[np.argmax(acquisition_values)]
 
         if DEBUG_MODE:
             print(
-                f"🔍 Debug: Selected next point: {x_next} with hypervolume improvement {acquisition_values.max()}"
+                f"""🔍 Debug: Selected next point: {x_next} """
+                f"""with hypervolume improvement {acquisition_values.max()}"""
             )
 
         # Check if x_next is already evaluated
         already_evaluated = False
-        for j in range(n_evaluations):
+        for j in range(current_eval):
             if np.all(x_vector[j] == x_next):
                 already_evaluated = True
                 break
 
+        # Update the total number of evaluations
+        last_eval = current_eval
+
         if not already_evaluated:
             # Evaluate the function at the new point
-            x_vector[n_evaluations] = x_next
-            y_vector[n_evaluations] = function(x_next)
+            x_vector[current_eval] = x_next
+            y_vector[current_eval] = function(x_next)
 
             if DEBUG_MODE:
-                print(f"✅ Debug: Objective values: {y_vector[n_evaluations]}\n")
-
-            # Increment the number of evaluations
-            n_evaluations += 1
+                print(f"✅ Debug: Objective values: {y_vector[current_eval]}\n")
         else:
             if DEBUG_MODE:
                 print("🎯 Debug: Point already evaluated, stopping optimization\n")
-            # Stop if the point is already evaluated
             break
 
-    return x_vector, y_vector, n_evaluations
+    return x_vector, y_vector, last_eval + 1
 
 
-def is_pareto_efficient(costs):
+def is_pareto_efficient(y_vector):
     """
-    Find the Pareto-efficient points.
-
-    Args:
-        costs (np.ndarray): An (n_points, n_objectives) array
-
-    Returns:
-        np.ndarray: A boolean array indicating which points are Pareto efficient
+    Find the Pareto-efficient points from the evaluations.
     """
 
-    # Efficient set is defined as the set of points that are not dominated by any other point
-    is_efficient = np.arange(costs.shape[0])
-    n_points = costs.shape[0]
-    next_point_index = 0
+    # Invert the y_vector to find the Pareto-efficient points
+    y_vector_neg = -y_vector
 
-    # Iterate through each point and check if it is dominated by any other point
-    while next_point_index < len(costs):
-        # Check if the current point is dominated by any other point
-        nondominated_point_mask = np.any(costs < costs[next_point_index], axis=1)
-        nondominated_point_mask[next_point_index] = True
-        # If the current point is dominated by any other point, remove it from the efficient set
-        is_efficient = is_efficient[nondominated_point_mask]
-        costs = costs[nondominated_point_mask]
+    is_efficient = np.ones(y_vector_neg.shape[0], dtype=bool)
 
-        # Move to the next point
-        next_point_index = np.sum(nondominated_point_mask[:next_point_index]) + 1
+    for i in range(y_vector_neg.shape[0]):
+        if not is_efficient[i]:
+            continue
+        for j in range(i + 1, y_vector_neg.shape[0]):
+            if np.all(y_vector_neg[j] <= y_vector_neg[i]) and np.any(
+                y_vector_neg[j] < y_vector_neg[i]
+            ):
+                is_efficient[i] = False
+                break
+            if np.all(y_vector_neg[i] <= y_vector_neg[j]) and np.any(
+                y_vector_neg[i] < y_vector_neg[j]
+            ):
+                is_efficient[j] = False
 
-    is_efficient_mask = np.zeros(n_points, dtype=bool)
-    is_efficient_mask[is_efficient] = True
-    return is_efficient_mask
+    return is_efficient
 
 
 class BayesianOptimization:
@@ -528,6 +666,12 @@ class BayesianOptimization:
             (self.n_objectives, self.n_iterations, self.n_iterations), dtype=np.float64
         )
 
+        # Preallocate the kernel vector kstar for each objective
+        self.k_star = np.zeros(
+            (self.n_objectives, self.n_iterations, len(self.input_space)),
+            dtype=np.float64,
+        )
+
         # Preallocate the mean for each objective's Gaussian process
         self.mu_objectives = np.zeros(
             (n_objectives, len(self.input_space)), dtype=np.float64
@@ -537,6 +681,9 @@ class BayesianOptimization:
         self.variance_objectives = np.zeros(
             (n_objectives, len(self.input_space)), dtype=np.float64
         )
+
+        # Preallocate the upper confidence bound acquisition function values for each objective
+        self.ucb = np.zeros((n_objectives, len(self.input_space)), dtype=np.float64)
 
         # Preallocate the acquisition function values for each point
         self.acquisition_values = np.zeros(len(self.input_space), dtype=np.float64)
@@ -550,11 +697,13 @@ class BayesianOptimization:
             self.initial_samples,
         )
 
-        # If prior mean and variance are not provided, calculate them from initial samples
+        # If prior mean is not provided, calculate it from initial samples
         if np.all(self.prior_mean == 0.0):
             self.prior_mean = compute_prior_mean(
                 self.y_vector, self.n_evaluations, n_objectives
             )
+
+        # If prior variance is not provided, calculate it from initial samples
         if np.all(self.prior_variance == 1.0):
             self.prior_variance = compute_prior_variance(
                 self.y_vector, self.n_evaluations, n_objectives
@@ -574,20 +723,22 @@ class BayesianOptimization:
 
         # Optimize with numba
         self.x_vector, self.y_vector, self.n_evaluations = optimize(
-            self.x_vector,
-            self.y_vector,
-            self.kernel_matrices,
-            self.mu_objectives,
-            self.variance_objectives,
-            self.acquisition_values,
-            self.input_space,
-            self.prior_mean,
-            self.prior_variance,
-            self.reference_point,
-            self.n_evaluations,
-            self.n_iterations,
-            self.n_objectives,
-            self.function,
+            x_vector=self.x_vector,
+            y_vector=self.y_vector,
+            kernel_matrices=self.kernel_matrices,
+            k_star=self.k_star,
+            mu_objectives=self.mu_objectives,
+            variance_objectives=self.variance_objectives,
+            ucb=self.ucb,
+            acquisition_values=self.acquisition_values,
+            input_space=self.input_space,
+            prior_mean=self.prior_mean,
+            prior_variance=self.prior_variance,
+            reference_point=self.reference_point,
+            n_evaluations=self.n_evaluations,
+            n_iterations=self.n_iterations,
+            n_objectives=self.n_objectives,
+            function=self.function,
             beta=beta,
             length_scale=length_scale,
         )
@@ -597,24 +748,21 @@ class BayesianOptimization:
         Perform Pareto analysis on the results of the optimization.
         """
 
-        # Find Pareto frontier
-        pareto_mask = is_pareto_efficient(
-            -self.y_vector[: self.n_evaluations]
-        )  # Negative for maximization
-        pareto_solutions = self.x_vector[: self.n_evaluations][pareto_mask]
-        pareto_objectives = self.y_vector[: self.n_evaluations][pareto_mask]
+        is_efficient = is_pareto_efficient(self.y_vector[: self.n_evaluations])
 
-        if DEBUG_MODE:
-            # Print results
-            print("\n📊 Final results:")
-            for i in range(self.n_evaluations):
-                print(f"x = {self.x_vector[i]}, objectives = {self.y_vector[i]}")
+        # Extract Pareto-efficient points
+        pareto_points = self.y_vector[is_efficient]
 
-        print(f"\n⚖️  Pareto optimal solutions found: {len(pareto_solutions)}")
-        for i, (x_pareto, obj_pareto) in enumerate(
-            zip(pareto_solutions, pareto_objectives)
-        ):
-            print(f"Pareto {i+1}: x = {x_pareto}, objectives = {obj_pareto}")
+        # Extract point of the input space corresponding to Pareto-efficient points
+        pareto_indices = np.where(is_efficient)[0]
+        pareto_input_points = self.x_vector[pareto_indices]
+
+        print("📊 Pareto Analysis Results:")
+
+        for i, point in enumerate(pareto_points):
+            print(f"Input: {pareto_input_points[i]}, Pareto Point {i + 1}: {point}")
+
+        return pareto_points
 
 
 if __name__ == "__main__":
@@ -631,15 +779,15 @@ if __name__ == "__main__":
     optimizer = BayesianOptimization(
         toy_function,
         _bounds,
-        n_objectives=len(
-            _bounds
-        ),  # Number of objectives is equal to the number of bounds
+        n_objectives=len(_bounds),
         n_iterations=30,
+        # prior_mean=[50] * len(_bounds),  # Initial prior mean
+        # prior_variance=[400] * len(_bounds),  # Initial prior variance
         initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
     )
 
     optimizer.optimize(
-        beta=5.0,
+        beta=2.0,
         length_scale=1.0,
     )
 
