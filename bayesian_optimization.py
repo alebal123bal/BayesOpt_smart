@@ -565,7 +565,7 @@ def optimize(
     for current_eval in range(n_evaluations, n_iterations):
         if DEBUG_MODE:
             print(
-                f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={n_evaluations}"
+                f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={current_eval}"
             )
 
         # Update kernel matrices for each objective
