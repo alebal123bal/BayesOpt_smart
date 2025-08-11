@@ -261,7 +261,7 @@ def update_k(
     x_vector,
     current_eval,
     var,
-    length_scale=1.0,
+    length_scale,
 ):
     """
     Compute the kernel matrix for the training points.
@@ -295,9 +295,10 @@ def update_k_star(
     k_star,
     x_vector,
     input_space,
+    last_eval,
     current_eval,
     var,
-    length_scale=1.0,
+    length_scale,
 ):
     """
     Update the kernel vector for a new point based on the training points.
@@ -306,6 +307,7 @@ def update_k_star(
         k_star (np.ndarray): Preallocated kernel vector to fill up to the current_eval.
         x_vector (np.ndarray): Training points.
         input_space (np.ndarray): Discretized input space.
+        last_eval (int): Last evaluation number.
         current_eval (int): Current number of evaluations.
         var (np.ndarray): Variance parameter for the kernel.
         length_scale (float): Length scale parameter for the kernel.
@@ -315,7 +317,7 @@ def update_k_star(
     n = len(input_space)
 
     # Compute the same rbf kernel for all objectives, as the only difference is the variance
-    for e in range(current_eval):
+    for e in range(last_eval, current_eval):
         eval_x = x_vector[e]
         for i in range(n):
             x_star = input_space[i]
@@ -323,7 +325,7 @@ def update_k_star(
 
     # Modify the  k_star based on the prior variance for each objective
     for obj_idx in range(n_objectives):
-        k_star[obj_idx] *= var[obj_idx]
+        k_star[obj_idx, last_eval:current_eval, :] *= var[obj_idx]
 
 
 @njit
@@ -594,6 +596,7 @@ def optimize(
             k_star=k_star,
             x_vector=x_vector,
             input_space=input_space,
+            last_eval=last_eval,
             current_eval=current_eval,
             var=prior_variance,
             length_scale=length_scale,
