@@ -259,6 +259,7 @@ def rbf_kernel(x1, x2, var, length_scale=1.0):
 def update_k(
     kernel_matrix,
     x_vector,
+    last_eval,
     current_eval,
     var,
     length_scale,
@@ -269,6 +270,7 @@ def update_k(
     Args:
         kernel_matrix (np.ndarray): Preallocated kernel matrix to fill.
         x_vector (np.ndarray): Training points.
+        last_eval (int): Last evaluation number.
         current_eval (int): Current number of evaluations.
         var (float): Variance parameter for the kernel.
         length_scale (float): Length scale parameter for the kernel.
@@ -276,9 +278,9 @@ def update_k(
 
     n_objectives = kernel_matrix.shape[0]
 
-    for i in prange(current_eval):  # pylint: disable=not-an-iterable
+    for i in range(last_eval, current_eval):  # pylint: disable=not-an-iterable
         # Compute only the upper triangle (kernel is symmetric)
-        for j in range(i, current_eval):
+        for j in range(0, current_eval):
             kernel_matrix[:, i, j] = rbf_kernel(
                 x_vector[i], x_vector[j], 1.0, length_scale
             )
@@ -286,8 +288,13 @@ def update_k(
             kernel_matrix[:, j, i] = kernel_matrix[:, i, j]
 
     # The only difference in the matrices for different objectives is the prior variance
-    for obj_idx in range(n_objectives):
-        kernel_matrix[obj_idx] *= var[obj_idx]
+    for i in range(last_eval, current_eval):
+        for j in range(0, current_eval):
+            base_val = rbf_kernel(x_vector[i], x_vector[j], 1.0, length_scale)
+            for obj_idx in range(n_objectives):
+                k_val = var[obj_idx] * base_val
+                kernel_matrix[obj_idx, i, j] = k_val
+                kernel_matrix[obj_idx, j, i] = k_val
 
 
 @njit
@@ -569,13 +576,12 @@ def optimize(
             print(
                 f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={current_eval}"
             )
-        
-        # TODO: keep track of last evaluation to avoid recomputing kernel points
 
         # Update kernel matrices for each objective
         update_k(
             kernel_matrix=kernel_matrices,
             x_vector=x_vector,
+            last_eval=last_eval,
             current_eval=current_eval,
             var=prior_variance,
             length_scale=length_scale,
