@@ -567,6 +567,8 @@ def optimize(
             print(
                 f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={current_eval}"
             )
+        
+        # TODO: keep track of last evaluation to avoid recomputing kernel points
 
         # Update kernel matrices for each objective
         update_k(
