@@ -579,6 +579,9 @@ def optimize(
             length_scale=length_scale,
         )
 
+        # TODO: find optimal prior_variance and length_scale that maximize
+        # the known mll formula
+
         # Invert matrix
         kernel_matrix_inv = invert_k(
             current_eval=current_eval,
