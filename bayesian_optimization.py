@@ -281,16 +281,12 @@ def update_k(
     for i in range(last_eval, current_eval):  # pylint: disable=not-an-iterable
         # Compute only the upper triangle (kernel is symmetric)
         for j in range(0, current_eval):
-            kernel_matrix[:, i, j] = rbf_kernel(
-                x_vector[i], x_vector[j], 1.0, length_scale
-            )
+            base_val = rbf_kernel(x_vector[i], x_vector[j], 1.0, length_scale)
+            kernel_matrix[:, i, j] = base_val
             # Symmetric entry
             kernel_matrix[:, j, i] = kernel_matrix[:, i, j]
 
-    # The only difference in the matrices for different objectives is the prior variance
-    for i in range(last_eval, current_eval):
-        for j in range(0, current_eval):
-            base_val = rbf_kernel(x_vector[i], x_vector[j], 1.0, length_scale)
+            # The only difference in the matrices for different objectives is the prior variance
             for obj_idx in range(n_objectives):
                 k_val = var[obj_idx] * base_val
                 kernel_matrix[obj_idx, i, j] = k_val
