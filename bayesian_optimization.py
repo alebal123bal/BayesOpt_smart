@@ -5,6 +5,7 @@ Multi-Objective Bayesian optimization optimized class.
 import os
 import time
 import numpy as np
+from scipy.optimize import minimize
 
 # Debug flag - setup from launch configuration or environment variable
 DEBUG_MODE = os.environ.get("BAYESIAN_DEBUG", "False").lower() in ("true", "1", "yes")
@@ -506,47 +507,54 @@ def update_hypervolume_improvement(
 
 @njit
 def compute_marginal_log_likelihood(
+    x_vector,
     y_vector,
+    kernel_matrix,
     prior_mean,
     prior_variance,
-    kernel_matrix,
+    length_scales,
     current_eval,
 ):
     """
     Compute the marginal log likelihood for the Gaussian process.
     Normalizes outputs per objective so MLL values are comparable.
+    Computes the kernel matrix internally using update_k.
+    Sum the per-objective MLLs because the objectives are modeled as independent GPs.
+    The joint likelihood is the product of individual likelihoods, and taking logs
+    turns the product into a sum of the individual log-likelihoods.
 
     Args:
+        x_vector (np.ndarray): (n_eval, n_features) training inputs.
         y_vector (np.ndarray): (n_eval, n_objectives) objective values at evaluated points.
+        kernel_matrix (np.ndarray): Preallocated (n_objectives, n_eval, n_eval) matrix to store kernels.
         prior_mean (np.ndarray): (n_objectives,) prior mean for each objective.
         prior_variance (np.ndarray): (n_objectives,) prior variance for each objective.
-        kernel_matrix (np.ndarray): (n_objectives, n_eval, n_eval) kernel matrix for the training points.
+        length_scales (np.ndarray): (n_objectives,) Length scale for each objective.
         current_eval (int): Number of evaluated points to consider.
 
     Returns:
         total_mll (float): Sum of MLL over all objectives.
-        data_fit (float): Sum of data-fit terms over objectives.
-        complexity_penalty (float): Sum of complexity penalties over objectives.
-        constant_penalty (float): Sum of constant penalties over objectives.
     """
+    # Compute kernel matrix for given hyperparameters
+    update_k(
+        kernel_matrix=kernel_matrix,
+        x_vector=x_vector,
+        last_eval=0,
+        current_eval=current_eval,
+        prior_variance=prior_variance,
+        length_scales=length_scales,
+    )
+
     n_objectives = y_vector.shape[1]
     n_points = current_eval
-    eps = 1e-8  # jitter term
-
-    mll = 0.0
+    total_mll = 0.0
 
     for obj_idx in range(n_objectives):
-        # Extract submatrix for this objective and scale by prior variance
+        # Extract K for this objective and scale by prior variance
         K = kernel_matrix[obj_idx, :n_points, :n_points] / prior_variance[obj_idx]
 
-        # Add jitter for numerical stability
-        for p in range(n_points):
-            K[p, p] += eps
-
-        # Centered outputs
+        # Center and normalize outputs
         y_centered = y_vector[:n_points, obj_idx] - prior_mean[obj_idx]
-
-        # Normalize outputs for comparability
         std_y = np.std(y_centered)
         if std_y > 0.0:
             y_centered /= std_y
@@ -567,12 +575,10 @@ def compute_marginal_log_likelihood(
         # Term 3: constant penalty
         constant_term = -0.5 * n_points * np.log(2.0 * np.pi)
 
-        # Total for this objective
-        mll_obj = data_fit_term + complexity_term + constant_term
+        # Add to total MLL
+        total_mll += data_fit_term + complexity_term + constant_term
 
-        mll += mll_obj
-
-    return mll
+    return total_mll
 
 
 @njit
@@ -644,6 +650,16 @@ def optimize(
 
         # TODO: find optimal prior_variance and length_scale that maximize
         # the known mll formula
+
+        test_mll = compute_marginal_log_likelihood(
+            x_vector=x_vector,
+            y_vector=y_vector,
+            kernel_matrix=kernel_matrices,
+            prior_mean=prior_mean,
+            prior_variance=prior_variance,
+            length_scales=length_scales,
+            current_eval=current_eval,
+        )
 
         # Invert matrix
         kernel_matrix_inv = invert_k(
