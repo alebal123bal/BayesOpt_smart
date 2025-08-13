@@ -608,6 +608,7 @@ def compute_marginal_log_likelihood(
     return total_mll
 
 
+# TODO: make this njit compatible
 def optimize_hyperparams_mll(
     x_vector,
     y_vector,
@@ -677,7 +678,7 @@ def optimize_hyperparams_mll(
     return res
 
 
-@njit
+# @njit
 def optimize(
     x_vector,
     y_vector,
@@ -724,6 +725,8 @@ def optimize(
     Returns:
         tuple: Updated x_vector, y_vector, and number of evaluations.
     """
+    # Cheat momentarely: put DEBUG_MODE = True
+    DEBUG_MODE = True
 
     # Total number of evaluations
     last_eval = 0
@@ -1077,7 +1080,7 @@ if __name__ == "__main__":
         n_objectives=len(_bounds),
         n_iterations=40,
         initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
-        betas=np.array([1.0] * len(_bounds)),
+        betas=np.array([2.0] * len(_bounds)),
         length_scales=np.array([2.0] * len(_bounds)),
     )
 
