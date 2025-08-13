@@ -505,6 +505,33 @@ def update_hypervolume_improvement(
         acquisition_values[i] = np.sum(ucb[:, i])
 
 
+def select_next_point(
+    input_space, acquisition_values, evaluated_points, max_candidates=3
+):
+    """
+    Select the next point to evaluate based on acquisition values.
+
+    Args:
+        input_space (np.ndarray): The input space to sample from.
+        acquisition_values (np.ndarray): The acquisition values for each point in the input space.
+        evaluated_points (np.ndarray): The points that have already been evaluated.
+        max_candidates (int): The maximum number of candidates to consider.
+
+    Returns:
+        np.ndarray: The selected point to evaluate next, or None if no valid point is found.
+    """
+
+    # Sort candidates by acquisition value
+    sorted_indices = np.argsort(acquisition_values)[::-1]  # best → worst
+
+    for idx in sorted_indices[:max_candidates]:
+        candidate = input_space[idx]
+        if not np.any(np.all(candidate == evaluated_points, axis=1)):
+            return candidate  # Found a new point
+
+    return None  # All top candidates already evaluated
+
+
 @njit
 def compute_marginal_log_likelihood(
     x_vector,
@@ -707,9 +734,7 @@ def optimize(
                 f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={current_eval}"
             )
 
-        # TODO: find optimal prior_variance and length_scale that maximize
-        # the known mll formula
-        res = optimize_hyperparams_mll(
+        optimized_hyperparams = optimize_hyperparams_mll(
             x_vector=x_vector,
             y_vector=y_vector,
             kernel_matrix=kernel_matrices,
@@ -722,7 +747,9 @@ def optimize(
         if DEBUG_MODE:
             print(
                 "🔄 Debug: Optimized hyperparameters:",
-                np.array2string(res.x, precision=2, suppress_small=True),
+                np.array2string(
+                    optimized_hyperparams.x, precision=2, suppress_small=True
+                ),
             )
 
         # Update kernel matrices for each objective
@@ -797,35 +824,36 @@ def optimize(
         )
 
         # Select the next point to evaluate
-        x_next = input_space[np.argmax(acquisition_values)]
+        x_next = select_next_point(
+            input_space=input_space,
+            acquisition_values=acquisition_values,
+            evaluated_points=x_vector[:current_eval],
+        )
+
+        if x_next is None:
+            if DEBUG_MODE:
+                print(
+                    "🎯 Debug: All top candidates already evaluated, stopping optimization\n"
+                )
+            break  # Early stop
 
         if DEBUG_MODE:
+            # Find acquisition value for the chosen point
+            idx = np.where((input_space == x_next).all(axis=1))[0][0]
             print(
-                f"""🔍 Debug: Selected next point: {x_next} """
-                f"""with hypervolume improvement {acquisition_values.max()}"""
+                f"🔍 Debug: Selected next point: {x_next} "
+                f"with hypervolume improvement {acquisition_values[idx]:.4f}"
             )
-
-        # Check if x_next is already evaluated
-        already_evaluated = False
-        for j in range(current_eval):
-            if np.all(x_vector[j] == x_next):
-                already_evaluated = True
-                break
 
         # Update the total number of evaluations
         last_eval = current_eval
 
-        if not already_evaluated:
-            # Evaluate the function at the new point
-            x_vector[current_eval] = x_next
-            y_vector[current_eval] = function(x_next)
+        # Evaluate the function at the new point
+        x_vector[current_eval] = x_next
+        y_vector[current_eval] = function(x_next)
 
-            if DEBUG_MODE:
-                print(f"✅ Debug: Objective values: {y_vector[current_eval]}\n")
-        else:
-            if DEBUG_MODE:
-                print("🎯 Debug: Point already evaluated, stopping optimization\n")
-            break
+        if DEBUG_MODE:
+            print(f"✅ Debug: Objective values: {y_vector[current_eval]}\n")
 
     return x_vector, y_vector, last_eval + 1
 
