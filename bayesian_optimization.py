@@ -260,11 +260,11 @@ def update_k(
 
     for i in range(last_eval, current_eval):
         for j in range(0, current_eval):
-            for obj_idx in range(n_objectives):
-                # Compute the squared distance between points i and j
-                diff = x_vector[i] - x_vector[j]
-                sq_dist = np.dot(diff, diff)
+            # Compute the squared distance between points i and j
+            diff = x_vector[i] - x_vector[j]
+            sq_dist = np.dot(diff, diff)
 
+            for obj_idx in range(n_objectives):
                 # Compute RBF kernel with the length scale for this objective
                 k_val = var[obj_idx] * np.exp(
                     -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
@@ -303,17 +303,19 @@ def update_k_star(
     for e in range(last_eval, current_eval):
         eval_x = x_vector[e]
         for i in range(n_candidates):
+            # Get the candidate point
             x_star = input_space[i]
 
             # Compute the squared distance between points
             diff = eval_x - x_star
             sq_dist = np.dot(diff, diff)
+
             for obj_idx in range(n_objectives):
                 # Compute RBF kernel with the length scale for this objective
                 k_val = var[obj_idx] * np.exp(
                     -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
                 )
-                # Fill in the kernel matrix
+                # Fill in the k star
                 k_star[obj_idx, e, i] = k_val
 
 
