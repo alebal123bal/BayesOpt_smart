@@ -237,25 +237,6 @@ def invert_k(current_eval, kernel_matrix, prior_variance):
 
 
 @njit
-def rbf_kernel(x1, x2, var, length_scale=1.0):
-    """
-    Radial basis function (RBF) kernel for multi-dimensional inputs.
-
-    Args:
-        x1 (np.ndarray): First input point in the hyperplane.
-        x2 (np.ndarray): Second input point in the hyperplane.
-        var (float): Variance parameter for the kernel.
-        length_scale (float): Length scale parameter for the kernel.
-
-    Returns:
-        float: The value of the RBF kernel between x1 and x2.
-    """
-
-    euclidean_distance_2 = np.sum((x1 - x2) ** 2)
-    return var * np.exp(-0.5 * euclidean_distance_2 / (length_scale**2))
-
-
-@njit
 def update_k(
     kernel_matrix,
     x_vector,
