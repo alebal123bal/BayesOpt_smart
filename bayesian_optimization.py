@@ -42,9 +42,9 @@ else:
     print("🚀 PRODUCTION MODE - Numba enabled")
     from numba import njit, prange
 
-X_MAX = 20
-Y_MAX = 20
-Z_MAX = 20
+X_MAX = 30
+Y_MAX = 30
+Z_MAX = 30
 
 
 @njit
@@ -587,7 +587,7 @@ def compute_marginal_log_likelihood(
             y_centered /= std_y
 
         # Cholesky decomposition
-        L = np.linalg.cholesky(K)
+        L = np.linalg.cholesky(K + 1e-8 * np.eye(n_points))
 
         # Solve alpha = K^{-1} y_centered
         alpha = np.linalg.solve(L.T, np.linalg.solve(L, y_centered))
@@ -828,6 +828,7 @@ def optimize(
             input_space=input_space,
             acquisition_values=acquisition_values,
             evaluated_points=x_vector[:current_eval],
+            max_candidates=20,
         )
 
         if x_next is None:
