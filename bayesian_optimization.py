@@ -265,34 +265,28 @@ def update_k(
     length_scales,
 ):
     """
-    Compute the kernel matrix for the training points.
+    Compute the kernel matrix for the training points for each objective.
 
     Args:
-        kernel_matrix (np.ndarray): Preallocated kernel matrix to fill.
-        x_vector (np.ndarray): Training points.
+        kernel_matrix (np.ndarray): (n_objectives, n_points, n_points) Preallocated kernel matrix to fill.
+        x_vector (np.ndarray): (n_points, n_features) Training points.
         last_eval (int): Last evaluation number.
         current_eval (int): Current number of evaluations.
-        var (float): Variance parameter for the kernel.
-        length_scales (np.ndarray): Length scale parameters for the kernel.
+        var (np.ndarray): (n_objectives,) Variance parameter for each objective's kernel.
+        length_scales (np.ndarray): (n_objectives,) Length scale parameters for each objective's kernel.
     """
-
     n_objectives = kernel_matrix.shape[0]
 
-    for i in range(last_eval, current_eval):  # pylint: disable=not-an-iterable
-        # Compute only the upper triangle (kernel is symmetric)
+    for i in range(last_eval, current_eval):
         for j in range(0, current_eval):
-            base_val = rbf_kernel(x_vector[i], x_vector[j], 1.0, length_scales[0])
-            kernel_matrix[:, i, j] = base_val
-            # Symmetric entry
-            kernel_matrix[:, j, i] = kernel_matrix[:, i, j]
-
-            # The only difference in the matrices for different objectives is the prior variance
-
-            # TODO do the same for the length scale
             for obj_idx in range(n_objectives):
-                k_val = var[obj_idx] * base_val
+                diff = x_vector[i] - x_vector[j]
+                sq_dist = np.dot(diff, diff)
+                k_val = var[obj_idx] * np.exp(
+                    -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
+                )
                 kernel_matrix[obj_idx, i, j] = k_val
-                kernel_matrix[obj_idx, j, i] = k_val
+                kernel_matrix[obj_idx, j, i] = k_val  # symmetry
 
 
 @njit
@@ -306,31 +300,31 @@ def update_k_star(
     length_scales,
 ):
     """
-    Update the kernel vector for a new point based on the training points.
+    Update the kernel vector for new points based on the training points.
 
     Args:
-        k_star (np.ndarray): Preallocated kernel vector to fill up to the current_eval.
-        x_vector (np.ndarray): Training points.
-        input_space (np.ndarray): Discretized input space.
-        last_eval (int): Last evaluation number.
+        k_star (np.ndarray): (n_objectives, n_points, n_candidates) Preallocated kernel vector.
+        x_vector (np.ndarray): (n_points, n_features) Training points.
+        input_space (np.ndarray): (n_candidates, n_features) Discretized input space.
+        last_eval (int): Last evaluation index.
         current_eval (int): Current number of evaluations.
-        var (np.ndarray): Variance parameter for the kernel.
-        length_scales (np.ndarray): Length scale parameters for the kernel.
+        var (np.ndarray): (n_objectives,) Variance parameter for each objective's kernel.
+        length_scales (np.ndarray): (n_objectives,) Length scale parameter for each objective's kernel.
     """
-
     n_objectives = k_star.shape[0]
-    n = len(input_space)
+    n_candidates = len(input_space)
 
-    # Compute the same rbf kernel for all objectives, as the only difference is the variance
     for e in range(last_eval, current_eval):
         eval_x = x_vector[e]
-        for i in range(n):
+        for i in range(n_candidates):
             x_star = input_space[i]
-            k_star[:, e, i] = rbf_kernel(eval_x, x_star, 1.0, length_scales)
-
-    # Modify the  k_star based on the prior variance for each objective
-    for obj_idx in range(n_objectives):
-        k_star[obj_idx, last_eval:current_eval, :] *= var[obj_idx]
+            diff = eval_x - x_star
+            sq_dist = np.dot(diff, diff)
+            for obj_idx in range(n_objectives):
+                k_val = var[obj_idx] * np.exp(
+                    -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
+                )
+                k_star[obj_idx, e, i] = k_val
 
 
 @njit
@@ -456,20 +450,20 @@ def standardize_objectives(
 
 
 @njit
-def upper_confidence_bound(mu, variance, beta=2.0):
+def upper_confidence_bound(mu, variance, betas):
     """
     Compute the upper confidence bound for a single objective, vectorized.
 
     Args:
         mu (np.ndarray): Mean predictions for the objective.
         variance (np.ndarray): Variance predictions for the objective.
-        beta (float): Exploration-exploitation trade-off parameter.
+        betas (np.ndarray): Exploration-exploitation trade-off parameters for each objective.
 
     Returns:
         np.ndarray: Upper confidence bound values for the objective.
     """
 
-    return mu + beta * np.sqrt(np.abs(variance))
+    return mu + betas * np.sqrt(np.abs(variance))
 
 
 @njit
@@ -477,7 +471,7 @@ def update_ucb(
     ucb,
     mu_objectives,
     variance_objectives,
-    beta=2.0,
+    betas,
 ):
     """
     Update the upper confidence bound acquisition function values.
@@ -486,7 +480,7 @@ def update_ucb(
         ucb (np.ndarray): Preallocated upper confidence bound values.
         mu_objectives (np.ndarray): Mean predictions for each objective.
         variance_objectives (np.ndarray): Variance predictions for each objective.
-        beta (float): Exploration-exploitation trade-off parameter.
+        betas (np.ndarray): Exploration-exploitation trade-off parameters for each objective.
     """
 
     n_objectives = mu_objectives.shape[0]
@@ -496,7 +490,7 @@ def update_ucb(
         ucb[obj_idx] = upper_confidence_bound(
             mu_objectives[obj_idx],
             variance_objectives[obj_idx],
-            beta,
+            betas[obj_idx],
         )
 
 
@@ -711,7 +705,7 @@ def optimize(
             ucb=ucb,
             mu_objectives=std_mu_objectives,
             variance_objectives=std_variance_objectives,
-            beta=betas,
+            betas=betas,
         )
 
         # Update hypervolume improvement acquisition function
@@ -972,7 +966,7 @@ if __name__ == "__main__":
         n_iterations=40,
         initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
         betas=np.array([1.0] * len(_bounds)),
-        length_scales=np.array([1.0] * len(_bounds)),
+        length_scales=np.array([2.0] * len(_bounds)),
     )
 
     optimizer.optimize()
