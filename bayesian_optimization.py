@@ -287,6 +287,8 @@ def update_k(
             kernel_matrix[:, j, i] = kernel_matrix[:, i, j]
 
             # The only difference in the matrices for different objectives is the prior variance
+
+            # TODO do the same for the length scale
             for obj_idx in range(n_objectives):
                 k_val = var[obj_idx] * base_val
                 kernel_matrix[obj_idx, i, j] = k_val
@@ -517,6 +519,77 @@ def update_hypervolume_improvement(
 
 
 @njit
+def compute_marginal_log_likelihood(
+    y_vector,
+    prior_mean,
+    prior_variance,
+    kernel_matrix,
+    current_eval,
+):
+    """
+    Compute the marginal log likelihood for the Gaussian process.
+    Normalizes outputs per objective so MLL values are comparable.
+
+    Args:
+        y_vector (np.ndarray): (n_eval, n_objectives) objective values at evaluated points.
+        prior_mean (np.ndarray): (n_objectives,) prior mean for each objective.
+        prior_variance (np.ndarray): (n_objectives,) prior variance for each objective.
+        kernel_matrix (np.ndarray): (n_objectives, n_eval, n_eval) kernel matrix for the training points.
+        current_eval (int): Number of evaluated points to consider.
+
+    Returns:
+        total_mll (float): Sum of MLL over all objectives.
+        data_fit (float): Sum of data-fit terms over objectives.
+        complexity_penalty (float): Sum of complexity penalties over objectives.
+        constant_penalty (float): Sum of constant penalties over objectives.
+    """
+    n_objectives = y_vector.shape[1]
+    n_points = current_eval
+    eps = 1e-8  # jitter term
+
+    mll = 0.0
+
+    for obj_idx in range(n_objectives):
+        # Extract submatrix for this objective and scale by prior variance
+        K = kernel_matrix[obj_idx, :n_points, :n_points] / prior_variance[obj_idx]
+
+        # Add jitter for numerical stability
+        for p in range(n_points):
+            K[p, p] += eps
+
+        # Centered outputs
+        y_centered = y_vector[:n_points, obj_idx] - prior_mean[obj_idx]
+
+        # Normalize outputs for comparability
+        std_y = np.std(y_centered)
+        if std_y > 0.0:
+            y_centered /= std_y
+
+        # Cholesky decomposition
+        L = np.linalg.cholesky(K)
+
+        # Solve alpha = K^{-1} y_centered
+        alpha = np.linalg.solve(L.T, np.linalg.solve(L, y_centered))
+
+        # Term 1: data fit
+        data_fit_term = -0.5 * np.dot(y_centered, alpha)
+
+        # Term 2: complexity penalty (log determinant)
+        logdetK = 2.0 * np.sum(np.log(np.diag(L)))
+        complexity_term = -0.5 * logdetK
+
+        # Term 3: constant penalty
+        constant_term = -0.5 * n_points * np.log(2.0 * np.pi)
+
+        # Total for this objective
+        mll_obj = data_fit_term + complexity_term + constant_term
+
+        mll += mll_obj
+
+    return mll
+
+
+@njit
 def optimize(
     x_vector,
     y_vector,
@@ -737,10 +810,14 @@ class BayesianOptimization:
         self.n_iterations = n_iterations
 
         # If prior mean and variance are not provided, calculate them later from initial samples
-        self.prior_mean = np.array(kwargs.get("prior_mean", [0.0] * n_objectives))
-        self.prior_variance = np.array(
-            kwargs.get("prior_variance", [1.0] * n_objectives)
+        self.prior_mean = np.array(
+            kwargs.get("prior_mean", [0.0] * n_objectives),
         )
+        self.prior_variance = np.array(
+            kwargs.get("prior_variance", [1.0] * n_objectives),
+        )
+
+        # TODO: add length scale
 
         # Initial number of samples to evaluate
         self.initial_samples = kwargs.get("initial_samples", 3)
