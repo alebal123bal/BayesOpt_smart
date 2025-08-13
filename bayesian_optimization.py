@@ -581,6 +581,75 @@ def compute_marginal_log_likelihood(
     return total_mll
 
 
+def optimize_hyperparams_mll(
+    x_vector,
+    y_vector,
+    kernel_matrix,
+    prior_mean,
+    prior_variance,
+    length_scales,
+    current_eval,
+):
+    """
+    Optimize GP hyperparameters (length_scales, prior_variance) by maximizing
+    the marginal log-likelihood (MLL). Uses a derivative-free method (Powell).
+
+    Updates `length_scales` and `prior_variance` IN PLACE.
+
+    Args:
+        x_vector (np.ndarray): (n_eval, n_features) training inputs.
+        y_vector (np.ndarray): (n_eval, n_objectives) training targets.
+        kernel_matrix (np.ndarray): (n_objectives, n_eval, n_eval) preallocated kernel buffer.
+        prior_mean (np.ndarray): (n_objectives,) prior means (unchanged).
+        prior_variance (np.ndarray): (n_objectives,) prior variances (updated in place).
+        length_scales (np.ndarray): (n_objectives,) length scales (updated in place).
+        current_eval (int): Number of evaluated points to consider.
+
+    Returns:
+        res (OptimizeResult): Result object from scipy.optimize.minimize.
+    """
+    n_objectives = y_vector.shape[1]
+
+    # Initial guess: concatenate length scales and variances
+    initial_guess = np.concatenate([length_scales, prior_variance])
+
+    # Bounds: enforce positivity
+    bounds = [(1e-5, None)] * (2 * n_objectives)
+
+    # Objective function: negative MLL (since minimize() is used)
+    def objective(params):
+        ls = params[:n_objectives]
+        var = params[n_objectives:]
+        return -compute_marginal_log_likelihood(
+            x_vector=x_vector,
+            y_vector=y_vector,
+            kernel_matrix=kernel_matrix,
+            prior_mean=prior_mean,
+            prior_variance=var,
+            length_scales=ls,
+            current_eval=current_eval,
+        )
+
+    # Run Powell optimization (derivative-free)
+    res = minimize(
+        objective,
+        initial_guess,
+        method="Powell",
+        bounds=bounds,
+        options={
+            "xtol": 1e-3,  # stop tolerance for parameters
+            "ftol": 1e-4,  # stop tolerance for function value
+            "maxiter": 200,  # safeguard against long runs
+        },
+    )
+
+    # Update hyperparameters in place
+    length_scales[:] = res.x[:n_objectives]
+    prior_variance[:] = res.x[n_objectives:]
+
+    return res
+
+
 @njit
 def optimize(
     x_vector,
@@ -638,20 +707,9 @@ def optimize(
                 f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={current_eval}"
             )
 
-        # Update kernel matrices for each objective
-        update_k(
-            kernel_matrix=kernel_matrices,
-            x_vector=x_vector,
-            last_eval=last_eval,
-            current_eval=current_eval,
-            prior_variance=prior_variance,
-            length_scales=length_scales,
-        )
-
         # TODO: find optimal prior_variance and length_scale that maximize
         # the known mll formula
-
-        test_mll = compute_marginal_log_likelihood(
+        res = optimize_hyperparams_mll(
             x_vector=x_vector,
             y_vector=y_vector,
             kernel_matrix=kernel_matrices,
@@ -660,6 +718,22 @@ def optimize(
             length_scales=length_scales,
             current_eval=current_eval,
         )
+
+        if DEBUG_MODE:
+            print(
+                "🔄 Debug: Optimized hyperparameters:",
+                np.array2string(res.x, precision=2, suppress_small=True),
+            )
+
+        # Update kernel matrices for each objective
+        update_k(
+            kernel_matrix=kernel_matrices,
+            x_vector=x_vector,
+            last_eval=0,  # Unfortunately, we need to recompute the full kernel matrix
+            current_eval=current_eval,
+            prior_variance=prior_variance,
+            length_scales=length_scales,
+        )  # TODO: remove the last eval parameter and find a way to avoid full recomputation
 
         # Invert matrix
         kernel_matrix_inv = invert_k(
@@ -673,7 +747,7 @@ def optimize(
             k_star=k_star,
             x_vector=x_vector,
             input_space=input_space,
-            last_eval=last_eval,
+            last_eval=0,  # Unfortunately, we need to recompute the full k star
             current_eval=current_eval,
             prior_variance=prior_variance,
             length_scales=length_scales,
@@ -937,19 +1011,20 @@ class BayesianOptimization:
     def pareto_analysis(self):
         """
         Perform Pareto analysis on the results of the optimization.
+        Handles early stopping where not all iterations are used.
         """
+        # Work only with evaluated points
+        evaluated_y = self.y_vector[: self.n_evaluations]
+        evaluated_x = self.x_vector[: self.n_evaluations]
 
-        is_efficient = is_pareto_efficient(self.y_vector[: self.n_evaluations])
+        # Compute Pareto efficiency on evaluated points
+        is_efficient = is_pareto_efficient(evaluated_y)
 
-        # Extract Pareto-efficient points
-        pareto_points = self.y_vector[is_efficient]
-
-        # Extract point of the input space corresponding to Pareto-efficient points
-        pareto_indices = np.where(is_efficient)[0]
-        pareto_input_points = self.x_vector[pareto_indices]
+        # Extract Pareto-efficient points and inputs
+        pareto_points = evaluated_y[is_efficient]
+        pareto_input_points = evaluated_x[is_efficient]
 
         print("📊 Pareto Analysis Results:")
-
         for i, point in enumerate(pareto_points):
             print(f"Input: {pareto_input_points[i]}, Pareto Point {i + 1}: {point}")
 
