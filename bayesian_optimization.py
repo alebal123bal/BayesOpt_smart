@@ -262,7 +262,7 @@ def update_k(
     last_eval,
     current_eval,
     var,
-    length_scale,
+    length_scales,
 ):
     """
     Compute the kernel matrix for the training points.
@@ -273,7 +273,7 @@ def update_k(
         last_eval (int): Last evaluation number.
         current_eval (int): Current number of evaluations.
         var (float): Variance parameter for the kernel.
-        length_scale (float): Length scale parameter for the kernel.
+        length_scales (np.ndarray): Length scale parameters for the kernel.
     """
 
     n_objectives = kernel_matrix.shape[0]
@@ -281,7 +281,7 @@ def update_k(
     for i in range(last_eval, current_eval):  # pylint: disable=not-an-iterable
         # Compute only the upper triangle (kernel is symmetric)
         for j in range(0, current_eval):
-            base_val = rbf_kernel(x_vector[i], x_vector[j], 1.0, length_scale)
+            base_val = rbf_kernel(x_vector[i], x_vector[j], 1.0, length_scales[0])
             kernel_matrix[:, i, j] = base_val
             # Symmetric entry
             kernel_matrix[:, j, i] = kernel_matrix[:, i, j]
@@ -303,7 +303,7 @@ def update_k_star(
     last_eval,
     current_eval,
     var,
-    length_scale,
+    length_scales,
 ):
     """
     Update the kernel vector for a new point based on the training points.
@@ -315,7 +315,7 @@ def update_k_star(
         last_eval (int): Last evaluation number.
         current_eval (int): Current number of evaluations.
         var (np.ndarray): Variance parameter for the kernel.
-        length_scale (float): Length scale parameter for the kernel.
+        length_scales (np.ndarray): Length scale parameters for the kernel.
     """
 
     n_objectives = k_star.shape[0]
@@ -326,7 +326,7 @@ def update_k_star(
         eval_x = x_vector[e]
         for i in range(n):
             x_star = input_space[i]
-            k_star[:, e, i] = rbf_kernel(eval_x, x_star, 1.0, length_scale)
+            k_star[:, e, i] = rbf_kernel(eval_x, x_star, 1.0, length_scales)
 
     # Modify the  k_star based on the prior variance for each objective
     for obj_idx in range(n_objectives):
@@ -609,8 +609,8 @@ def optimize(
     n_iterations,
     n_objectives,  # pylint: disable=unused-argument
     function,
-    beta=2.0,
-    length_scale=3.0,
+    betas,
+    length_scales,
 ):
     """
     Perform the Multi-Objective Bayesian optimization.
@@ -630,8 +630,8 @@ def optimize(
         n_iterations (int): Total number of iterations.
         n_objectives (int): Number of objectives.
         function (callable): The function to optimize.
-        beta (float): Exploration-exploitation trade-off parameter.
-        length_scale (float): Length scale parameter for the kernel.
+        betas (np.ndarray): Exploration-exploitation trade-off parameters.
+        length_scales (np.ndarray): Length scale parameters for the kernel.
 
     Returns:
         tuple: Updated x_vector, y_vector, and number of evaluations.
@@ -653,7 +653,7 @@ def optimize(
             last_eval=last_eval,
             current_eval=current_eval,
             var=prior_variance,
-            length_scale=length_scale,
+            length_scales=length_scales,
         )
 
         # TODO: find optimal prior_variance and length_scale that maximize
@@ -674,7 +674,7 @@ def optimize(
             last_eval=last_eval,
             current_eval=current_eval,
             var=prior_variance,
-            length_scale=length_scale,
+            length_scales=length_scales,
         )
 
         # Update mean predictions for each objective
@@ -711,7 +711,7 @@ def optimize(
             ucb=ucb,
             mu_objectives=std_mu_objectives,
             variance_objectives=std_variance_objectives,
-            beta=beta,
+            beta=betas,
         )
 
         # Update hypervolume improvement acquisition function
@@ -817,7 +817,15 @@ class BayesianOptimization:
             kwargs.get("prior_variance", [1.0] * n_objectives),
         )
 
-        # TODO: add length scale
+        # If length_scales is not provided, set it to 1.0
+        self.length_scales = np.array(
+            kwargs.get("length_scales", [1.0] * n_objectives),
+        )
+
+        # If betas is not provided, set it to 1.0
+        self.betas = np.array(
+            kwargs.get("betas", [1.0] * n_objectives),
+        )
 
         # Initial number of samples to evaluate
         self.initial_samples = kwargs.get("initial_samples", 3)
@@ -895,13 +903,9 @@ class BayesianOptimization:
         # Reference point for hypervolume (should be worse than any expected objective value)
         self.reference_point = np.array([0.0] * n_objectives)
 
-    def optimize(self, beta=2.0, length_scale=3.0):
+    def optimize(self):
         """
         Perform the Multi-Objective Bayesian optimization.
-
-        Args:
-            beta (float): Exploration-exploitation trade-off parameter.
-            length_scale (float): Length scale parameter for the kernel.
         """
 
         # Optimize with numba
@@ -924,8 +928,8 @@ class BayesianOptimization:
             n_iterations=self.n_iterations,
             n_objectives=self.n_objectives,
             function=self.function,
-            beta=beta,
-            length_scale=length_scale,
+            betas=self.betas,
+            length_scales=self.length_scales,
         )
 
     def pareto_analysis(self):
@@ -966,15 +970,12 @@ if __name__ == "__main__":
         _bounds,
         n_objectives=len(_bounds),
         n_iterations=40,
-        # prior_mean=[50] * len(_bounds),  # Initial prior mean
-        # prior_variance=[400] * len(_bounds),  # Initial prior variance
         initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
+        betas=np.array([1.0] * len(_bounds)),
+        length_scales=np.array([1.0] * len(_bounds)),
     )
 
-    optimizer.optimize(
-        beta=1.0,
-        length_scale=2.0,
-    )
+    optimizer.optimize()
 
     end_time = time.time()
     print(f"\n🎉 Optimization completed in {end_time - start_time:.2f} seconds.")
