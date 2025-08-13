@@ -242,7 +242,7 @@ def update_k(
     x_vector,
     last_eval,
     current_eval,
-    var,
+    prior_variance,
     length_scales,
 ):
     """
@@ -253,7 +253,7 @@ def update_k(
         x_vector (np.ndarray): (n_points, n_features) Training points.
         last_eval (int): Last evaluation number.
         current_eval (int): Current number of evaluations.
-        var (np.ndarray): (n_objectives,) Variance parameter for each objective's kernel.
+        prior_variance (np.ndarray): (n_objectives,) Variance parameter for each objective's kernel.
         length_scales (np.ndarray): (n_objectives,) Length scale parameters for each objective's kernel.
     """
     n_objectives = kernel_matrix.shape[0]
@@ -266,7 +266,7 @@ def update_k(
 
             for obj_idx in range(n_objectives):
                 # Compute RBF kernel with the length scale for this objective
-                k_val = var[obj_idx] * np.exp(
+                k_val = prior_variance[obj_idx] * np.exp(
                     -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
                 )
 
@@ -282,7 +282,7 @@ def update_k_star(
     input_space,
     last_eval,
     current_eval,
-    var,
+    prior_variance,
     length_scales,
 ):
     """
@@ -294,7 +294,7 @@ def update_k_star(
         input_space (np.ndarray): (n_candidates, n_features) Discretized input space.
         last_eval (int): Last evaluation index.
         current_eval (int): Current number of evaluations.
-        var (np.ndarray): (n_objectives,) Variance parameter for each objective's kernel.
+        prior_variance (np.ndarray): (n_objectives,) Variance parameter for each objective's kernel.
         length_scales (np.ndarray): (n_objectives,) Length scale parameter for each objective's kernel.
     """
     n_objectives = k_star.shape[0]
@@ -312,7 +312,7 @@ def update_k_star(
 
             for obj_idx in range(n_objectives):
                 # Compute RBF kernel with the length scale for this objective
-                k_val = var[obj_idx] * np.exp(
+                k_val = prior_variance[obj_idx] * np.exp(
                     -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
                 )
                 # Fill in the k star
@@ -435,7 +435,7 @@ def standardize_objectives(
             mu_objectives[obj_idx] - prior_mean[obj_idx]
         ) / np.sqrt(prior_variance[obj_idx])
 
-        # Standardize variance: var / prior_variance
+        # Standardize variance: variance / prior_variance
         std_variance_objectives[obj_idx] = (
             variance_objectives[obj_idx] / prior_variance[obj_idx]
         )
@@ -638,7 +638,7 @@ def optimize(
             x_vector=x_vector,
             last_eval=last_eval,
             current_eval=current_eval,
-            var=prior_variance,
+            prior_variance=prior_variance,
             length_scales=length_scales,
         )
 
@@ -659,7 +659,7 @@ def optimize(
             input_space=input_space,
             last_eval=last_eval,
             current_eval=current_eval,
-            var=prior_variance,
+            prior_variance=prior_variance,
             length_scales=length_scales,
         )
 
