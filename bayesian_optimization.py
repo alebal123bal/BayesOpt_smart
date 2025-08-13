@@ -725,17 +725,24 @@ def optimize(
     Returns:
         tuple: Updated x_vector, y_vector, and number of evaluations.
     """
-    # Cheat momentarely: put DEBUG_MODE = True
-    DEBUG_MODE = True
 
     # Total number of evaluations
     last_eval = 0
 
+    # Profile time
+    total_start = time.perf_counter()
+
     for current_eval in range(n_evaluations, n_iterations):
+        # Profile iteration start time
+        iter_start = time.perf_counter()
+
         if DEBUG_MODE:
             print(
                 f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={current_eval}"
             )
+
+        # Profile initial time
+        t0 = time.perf_counter()
 
         optimized_hyperparams = optimize_hyperparams_mll(
             x_vector=x_vector,
@@ -746,6 +753,9 @@ def optimize(
             length_scales=length_scales,
             current_eval=current_eval,
         )
+
+        # Profile hyperparameter optimization time
+        t1 = time.perf_counter()
 
         if DEBUG_MODE:
             print(
@@ -782,6 +792,9 @@ def optimize(
             prior_variance=prior_variance,
             length_scales=length_scales,
         )
+
+        # Profile kernel matrix and k star update time
+        t2 = time.perf_counter()
 
         # Update mean predictions for each objective
         update_mean(
@@ -834,6 +847,9 @@ def optimize(
             max_candidates=20,
         )
 
+        # Profile prediction and acquisition time
+        t3 = time.perf_counter()
+
         if x_next is None:
             if DEBUG_MODE:
                 print(
@@ -856,8 +872,20 @@ def optimize(
         x_vector[current_eval] = x_next
         y_vector[current_eval] = function(x_next)
 
+        # Profile evaluation time
+        t4 = time.perf_counter()
+
         if DEBUG_MODE:
             print(f"✅ Debug: Objective values: {y_vector[current_eval]}\n")
+
+        print(
+            f"[Iter {current_eval}] "
+            f"Hyperparams: {t1 - t0:.4f}s | "
+            f"Kernels: {t2 - t1:.4f}s | "
+            f"Acquisition: {t3 - t2:.4f}s | "
+            f"Eval: {t4 - t3:.4f}s | "
+            f"TOTAL: {t4 - iter_start:.4f}s"
+        )
 
     return x_vector, y_vector, last_eval + 1
 
