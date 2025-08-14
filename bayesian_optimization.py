@@ -573,6 +573,10 @@ def invert_k(current_eval, kernel_matrix, prior_variance):
         kernel_matrix[0, :current_eval, :current_eval] / prior_variance[0]
     )
 
+    # Add jitter for numerical stability
+    jitter = 1e-8
+    base_matrix += jitter * np.eye(base_matrix.shape[0])
+
     # Compute the inverse once
     base_matrix_inv = np.ascontiguousarray(np.linalg.inv(base_matrix))
 
