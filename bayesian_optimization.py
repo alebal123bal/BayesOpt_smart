@@ -14,36 +14,28 @@ DEBUG_MODE = os.environ.get("BAYESIAN_DEBUG", "False").lower() in ("true", "1", 
 if DEBUG_MODE:
     print("🐛 DEBUG MODE - Numba disabled")
 
-    # Define dummy decorators that do nothing
-    def njit(*args, **kwargs):  # pylint: disable=unused-argument
-        """
-        Dummy njit decorator for debugging purposes.
-        """
+    # Dummy njit decorator
+    def njit(*args, **kwargs):
+        """Dummy njit decorator for debugging."""
 
         def decorator(func):
-            """
-            Dummy decorator function that returns the function as is.
-            """
             return func
 
         if len(args) == 1 and callable(args[0]):
-            # Called as @njit without parentheses
             return args[0]
-        # Called as @njit()
         return decorator
 
-    def prange(n):
-        """
-        Dummy prange function for debugging purposes.
-        """
-        return range(n)
+    # Dummy prange matching built-in range signature
+    def prange(*args):
+        """Dummy prange function for debugging purposes."""
+        return range(*args)
 
 else:
     print("🚀 PRODUCTION MODE - Numba enabled")
     from numba import njit, prange
 
-X_MAX = 300
-Y_MAX = 300
+X_MAX = 30
+Y_MAX = 30
 Z_MAX = 30
 
 
@@ -60,7 +52,7 @@ def toy_function(x):
     """
     f_x = -((x[0] - 12) ** 2) + 100
     g_x = -((x[1] - 1) ** 2) + 20
-    h_x = -((x[2] - 5) ** 2) + 120
+    # h_x = -((x[2] - 5) ** 2) + 120
 
     return np.array(
         [
@@ -163,6 +155,50 @@ def generate_uniform_grid(bounds, dim, grid_size, max_samples):
             break
 
     return samples
+
+
+@njit
+def initialize_lhs_integer(x_vector, y_vector, bounds, function, n_samples=8):
+    """
+    Initialize sample points using Latin Hypercube Sampling (LHS) for integer design spaces.
+
+    This method divides the range of each dimension into `n_samples` equally sized bins
+    and ensures that exactly one sample is drawn from each bin per dimension.
+    The samples are placed randomly within each bin and rounded to integers to match
+    discrete search spaces.
+
+    Args:
+        x_vector (np.ndarray): (n_samples, n_dimensions) Array to store evaluated points.
+        y_vector (np.ndarray): (n_samples, n_objectives) Array to store objective values.
+        bounds (np.ndarray): (n_dimensions, 2) Array of (min, max) integer bounds for each dimension.
+        function (callable): The function to evaluate, taking a 1D integer array as input.
+        n_samples (int): Number of initial samples to generate.
+
+    Returns:
+        int: Number of evaluations performed (equals n_samples).
+    """
+    dim = len(bounds)
+    samples = np.empty((n_samples, dim), dtype=np.int32)
+
+    for d in range(dim):
+        # Create a random permutation of bin indices
+        perm = np.random.permutation(n_samples)
+        min_val, max_val = bounds[d, 0], bounds[d, 1]
+        step = (max_val - min_val + 1) / n_samples  # bin width in integer space
+
+        for i in range(n_samples):
+            # Random offset within the bin
+            low = min_val + perm[i] * step
+            high = min_val + (perm[i] + 1) * step
+            # Random integer in [low, high)
+            samples[i, d] = int(np.random.uniform(low, high))
+
+    # Evaluate all sampled points
+    for i in range(n_samples):
+        x_vector[i] = samples[i]
+        y_vector[i] = function(x_vector[i])
+
+    return n_samples
 
 
 @njit
@@ -1271,7 +1307,7 @@ class BayesianOptimization:
         self.acquisition_values = np.zeros(len(self.input_space), dtype=np.float64)
 
         # Initial guesses
-        self.n_evaluations = initialize_samples(
+        self.n_evaluations = initialize_lhs_integer(
             x_vector=self.x_vector,
             y_vector=self.y_vector,
             bounds=np.array(self.bounds, dtype=np.int32),
