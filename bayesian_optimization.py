@@ -276,6 +276,47 @@ def update_k(
                 kernel_matrix[obj_idx, j, i] = k_val  # symmetry
 
 
+@njit(parallel=True, fastmath=True)
+def update_k_parallel(
+    kernel_matrix,
+    x_vector,
+    last_eval,
+    current_eval,
+    prior_variance,
+    length_scales,
+):
+    """
+    Compute the kernel matrix for the training points in parallel.
+
+    Args:
+        kernel_matrix (np.ndarray): (n_objectives, n_points, n_points) Preallocated kernel matrix to fill.
+        x_vector (np.ndarray): (n_points, n_features) Training points.
+        last_eval (int): Last evaluation number.
+        current_eval (int): Current number of evaluations.
+        prior_variance (np.ndarray): (n_objectives,) Variance parameter for each objective's kernel.
+        length_scales (np.ndarray): (n_objectives,) Length scale parameters for each objective's kernel.
+    """
+    n_objectives = kernel_matrix.shape[0]
+
+    # Compute upper triangle in parallel
+    for i in prange(last_eval, current_eval):
+        for j in range(i, current_eval):
+            diff = x_vector[i] - x_vector[j]
+            sq_dist = np.dot(diff, diff)
+
+            for obj_idx in range(n_objectives):
+                k_val = prior_variance[obj_idx] * np.exp(
+                    -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
+                )
+                kernel_matrix[obj_idx, i, j] = k_val
+
+    # Mirror upper triangle to lower triangle (sequential, small cost)
+    for obj_idx in range(n_objectives):
+        for i in range(last_eval, current_eval):
+            for j in range(i + 1, current_eval):
+                kernel_matrix[obj_idx, j, i] = kernel_matrix[obj_idx, i, j]
+
+
 @njit
 def update_k_star(
     k_star,
@@ -318,6 +359,45 @@ def update_k_star(
                 )
                 # Fill in the k star
                 k_star[obj_idx, e, i] = k_val
+
+
+@njit(parallel=True, fastmath=True)
+def update_k_star_parallel(
+    k_star,
+    x_vector,
+    input_space,
+    last_eval,
+    current_eval,
+    prior_variance,
+    length_scales,
+):
+    """
+    Update the kernel vector for new points based on the training points.
+
+    Args:
+        k_star (np.ndarray): (n_objectives, n_points, n_candidates) Preallocated kernel vector.
+        x_vector (np.ndarray): (n_points, n_features) Training points.
+        input_space (np.ndarray): (n_candidates, n_features) Discretized input space.
+        last_eval (int): Last evaluation index.
+        current_eval (int): Current number of evaluations.
+        prior_variance (np.ndarray): (n_objectives,) Variance parameter for each objective's kernel.
+        length_scales (np.ndarray): (n_objectives,) Length scale parameter for each objective's kernel.
+    """
+    n_objectives = k_star.shape[0]
+    n_candidates = input_space.shape[0]
+    total_pairs = (current_eval - last_eval) * n_candidates
+
+    for idx in prange(total_pairs):
+        e = last_eval + idx // n_candidates
+        i = idx % n_candidates
+
+        diff = x_vector[e] - input_space[i]
+        sq_dist = np.dot(diff, diff)
+
+        for obj_idx in range(n_objectives):
+            k_star[obj_idx, e, i] = prior_variance[obj_idx] * np.exp(
+                -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
+            )
 
 
 @njit
@@ -567,7 +647,7 @@ def compute_marginal_log_likelihood(
         total_mll (float): Sum of MLL over all objectives.
     """
     # Compute kernel matrix for given hyperparameters
-    update_k(
+    update_k_parallel(
         kernel_matrix=kernel_matrix,
         x_vector=x_vector,
         last_eval=0,
@@ -772,14 +852,14 @@ def optimize(
             )
 
         # Update kernel matrices for each objective
-        update_k(
+        update_k_parallel(
             kernel_matrix=kernel_matrices,
             x_vector=x_vector,
             last_eval=0,  # Unfortunately, we need to recompute the full kernel matrix
             current_eval=current_eval,
             prior_variance=prior_variance,
             length_scales=length_scales,
-        )  # TODO: remove the last eval parameter and find a way to avoid full recomputation
+        )
 
         # Invert matrix
         kernel_matrix_inv = invert_k(
@@ -789,7 +869,7 @@ def optimize(
         )
 
         # Update k star for each objective
-        update_k_star(
+        update_k_star_parallel(
             k_star=k_star,
             x_vector=x_vector,
             input_space=input_space,
