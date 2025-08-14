@@ -1402,8 +1402,8 @@ if __name__ == "__main__":
         _bounds,
         n_objectives=len(_bounds),
         n_iterations=50,
-        initial_samples=4 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
-        betas=np.array([4.0] * len(_bounds)),
+        initial_samples=10,
+        betas=np.array([2.0] * len(_bounds)),
         length_scales=np.array([2.0] * len(_bounds)),
     )
 
