@@ -672,6 +672,47 @@ def update_mean(
 
 
 @njit
+def update_mean_parallel(
+    mu_objectives,
+    k_star,
+    inverted_kernel_matrix,
+    y_vector,
+    prior_mean,
+    current_eval,
+):
+    """
+    Update the mean predictions for each objective based on the kernel vector and training points.
+
+    Args:
+        mu_objectives (np.ndarray): (n_objectives, n_candidates) Preallocated mean predictions.
+        k_star (np.ndarray): (n_objectives, n_points, n_candidates) Kernel vector for the new point.
+        inverted_kernel_matrix (np.ndarray): (n_objectives, n_points, n_points) Inverted kernel matrices.
+        y_vector (np.ndarray): (n_points, n_objectives) Objective values at evaluated points.
+        prior_mean (np.ndarray): (n_objectives,) Prior mean for each objective.
+        current_eval (int): Current number of evaluations.
+    """
+    n_objectives = mu_objectives.shape[0]
+
+    for obj_idx in range(n_objectives):
+        # Ensure C‑contiguity for fast BLAS in '@'
+        kernel_matrix_inv_c = np.ascontiguousarray(
+            inverted_kernel_matrix[obj_idx, :current_eval, :current_eval]
+        )
+        delta_y_c = np.ascontiguousarray(
+            y_vector[:current_eval, obj_idx] - prior_mean[obj_idx]
+        )
+        k_star_obj_c = np.ascontiguousarray(k_star[obj_idx, :current_eval, :])
+
+        # First multiply: (n_points, n_points) @ (n_points,)
+        partial_result = kernel_matrix_inv_c @ delta_y_c
+
+        # Second multiply: (n_candidates, n_points) @ (n_points,)
+        mu_objectives[obj_idx, :] = (
+            prior_mean[obj_idx] + np.ascontiguousarray(k_star_obj_c.T) @ partial_result
+        )
+
+
+@njit
 def update_variance(
     variance_objectives,
     k_star,
@@ -710,6 +751,50 @@ def update_variance(
         quadratic_form = np.sum(k_star_t * intermediate.T, axis=1)
 
         # Compute all variances at once
+        variance_objectives[obj_idx, :] = prior_variance[obj_idx] - quadratic_form
+
+
+@njit
+def update_variance_parallel(
+    variance_objectives,
+    k_star,
+    inverted_kernel_matrix,
+    prior_variance,
+    current_eval,
+):
+    """
+    Update the variance predictions for each objective based on the kernel vector
+    and training points.
+
+    Args:
+        variance_objectives (np.ndarray): (n_objectives, n_candidates) Preallocated variance predictions.
+        k_star (np.ndarray): (n_objectives, n_points, n_candidates) Kernel vector for the new point.
+        inverted_kernel_matrix (np.ndarray): (n_objectives, n_points, n_points) Inverted kernel matrices.
+        prior_variance (np.ndarray): (n_objectives,) Prior variance for each objective.
+        current_eval (int): Current number of evaluations.
+    """
+    n_objectives = variance_objectives.shape[0]
+    n_candidates = k_star.shape[2]
+
+    for obj_idx in range(n_objectives):
+        # Ensure C‑contiguity for fast '@'
+        kernel_matrix_inv_c = np.ascontiguousarray(
+            inverted_kernel_matrix[obj_idx, :current_eval, :current_eval]
+        )
+        k_star_obj_c = np.ascontiguousarray(k_star[obj_idx, :current_eval, :])
+
+        # First multiply: (n_points, n_points) @ (n_points, n_candidates)
+        intermediate = kernel_matrix_inv_c @ k_star_obj_c
+
+        # Compute quadratic form without unsupported einsum or transposes
+        quadratic_form = np.empty(n_candidates, dtype=np.float64)
+        for j in range(n_candidates):
+            s = 0.0
+            for i in range(current_eval):
+                s += k_star_obj_c[i, j] * intermediate[i, j]
+            quadratic_form[j] = s
+
+        # Compute variances
         variance_objectives[obj_idx, :] = prior_variance[obj_idx] - quadratic_form
 
 
@@ -961,7 +1046,7 @@ def optimize(
         t2 = time.perf_counter()
 
         # Update mean predictions for each objective
-        update_mean(
+        update_mean_parallel(
             mu_objectives=mu_objectives,
             k_star=k_star,
             inverted_kernel_matrix=kernel_matrix_inv,
@@ -971,7 +1056,7 @@ def optimize(
         )
 
         # Update variance predictions for each objective
-        update_variance(
+        update_variance_parallel(
             variance_objectives=variance_objectives,
             k_star=k_star,
             inverted_kernel_matrix=kernel_matrix_inv,
