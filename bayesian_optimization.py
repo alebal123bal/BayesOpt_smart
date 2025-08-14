@@ -200,44 +200,6 @@ def compute_prior_variance(y_vector, n_evaluations, n_objectives):
 
 
 @njit
-def invert_k(current_eval, kernel_matrix, prior_variance):
-    """
-    Invert the kernel matrix for each objective.
-
-    Args:
-        current_eval (int): Current number of evaluations.
-        kernel_matrix (np.ndarray): Kernel matrix for the training points.
-        prior_variance (np.ndarray): Prior variance for each objective.
-
-    Returns:
-        np.ndarray: Inverted kernel matrix for each objective.
-    """
-
-    n_objectives = kernel_matrix.shape[0]
-
-    # Allocate a contiguous array for the inverted kernel matrix
-    kernel_matrix_inv = np.zeros(
-        (n_objectives, current_eval, current_eval), dtype=np.float64
-    )
-
-    # Extract and ensure contiguous memory layout
-    base_matrix = np.ascontiguousarray(
-        kernel_matrix[0, :current_eval, :current_eval] / prior_variance[0]
-    )
-
-    # Compute the inverse once
-    base_matrix_inv = np.ascontiguousarray(np.linalg.inv(base_matrix))
-
-    for obj_idx in range(n_objectives):
-        # Scale with prior variance
-        kernel_matrix_inv[obj_idx] = np.ascontiguousarray(
-            base_matrix_inv / prior_variance[obj_idx]
-        )
-
-    return kernel_matrix_inv
-
-
-@njit
 def update_k(
     kernel_matrix,
     x_vector,
@@ -315,6 +277,44 @@ def update_k_parallel(
         for i in range(last_eval, current_eval):
             for j in range(i + 1, current_eval):
                 kernel_matrix[obj_idx, j, i] = kernel_matrix[obj_idx, i, j]
+
+
+@njit
+def invert_k(current_eval, kernel_matrix, prior_variance):
+    """
+    Invert the kernel matrix for each objective.
+
+    Args:
+        current_eval (int): Current number of evaluations.
+        kernel_matrix (np.ndarray): Kernel matrix for the training points.
+        prior_variance (np.ndarray): Prior variance for each objective.
+
+    Returns:
+        np.ndarray: Inverted kernel matrix for each objective.
+    """
+
+    n_objectives = kernel_matrix.shape[0]
+
+    # Allocate a contiguous array for the inverted kernel matrix
+    kernel_matrix_inv = np.zeros(
+        (n_objectives, current_eval, current_eval), dtype=np.float64
+    )
+
+    # Extract and ensure contiguous memory layout
+    base_matrix = np.ascontiguousarray(
+        kernel_matrix[0, :current_eval, :current_eval] / prior_variance[0]
+    )
+
+    # Compute the inverse once
+    base_matrix_inv = np.ascontiguousarray(np.linalg.inv(base_matrix))
+
+    for obj_idx in range(n_objectives):
+        # Scale with prior variance
+        kernel_matrix_inv[obj_idx] = np.ascontiguousarray(
+            base_matrix_inv / prior_variance[obj_idx]
+        )
+
+    return kernel_matrix_inv
 
 
 @njit
