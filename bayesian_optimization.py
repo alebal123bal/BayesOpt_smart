@@ -506,7 +506,10 @@ def update_hypervolume_improvement(
 
 
 def select_next_point(
-    input_space, acquisition_values, evaluated_points, max_candidates=3
+    input_space,
+    acquisition_values,
+    evaluated_points,
+    max_candidates=3,
 ):
     """
     Select the next point to evaluate based on acquisition values.
@@ -529,7 +532,8 @@ def select_next_point(
         if not np.any(np.all(candidate == evaluated_points, axis=1)):
             return candidate  # Found a new point
 
-    return None  # All top candidates already evaluated
+    # All top candidates already evaluated
+    return None
 
 
 @njit
@@ -608,7 +612,6 @@ def compute_marginal_log_likelihood(
     return total_mll
 
 
-# TODO: make this njit compatible
 def optimize_hyperparams_mll(
     x_vector,
     y_vector,
@@ -662,7 +665,7 @@ def optimize_hyperparams_mll(
         return -mll
 
     # Run Powell optimization (derivative-free)
-    res = minimize(
+    optim_result = minimize(
         objective,
         initial_guess,
         method="Powell",
@@ -675,10 +678,10 @@ def optimize_hyperparams_mll(
     )
 
     # Update hyperparameters in place
-    length_scales[:] = res.x[:n_objectives]
-    prior_variance[:] = res.x[n_objectives:]
+    length_scales[:] = optim_result.x[:n_objectives]
+    prior_variance[:] = optim_result.x[n_objectives:]
 
-    return res
+    return optim_result
 
 
 # @njit
