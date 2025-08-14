@@ -42,8 +42,8 @@ else:
     print("🚀 PRODUCTION MODE - Numba enabled")
     from numba import njit, prange
 
-X_MAX = 30
-Y_MAX = 30
+X_MAX = 300
+Y_MAX = 300
 Z_MAX = 30
 
 
@@ -59,10 +59,16 @@ def toy_function(x):
         np.ndarray: Output array containing [f(x), g(x), h(x)].
     """
     f_x = -((x[0] - 12) ** 2) + 100
-    g_x = -((x[1] - 1) ** 4) + 20
+    g_x = -((x[1] - 1) ** 2) + 20
     h_x = -((x[2] - 5) ** 2) + 120
 
-    return np.array([f_x, g_x, h_x])
+    return np.array(
+        [
+            f_x,
+            g_x,
+            # h_x,
+        ]
+    )
 
 
 @njit
@@ -1345,7 +1351,7 @@ if __name__ == "__main__":
     _bounds = [
         (0, X_MAX),
         (0, Y_MAX),
-        (0, Z_MAX),
+        # (0, Z_MAX),
     ]
 
     start_time = time.time()
@@ -1355,9 +1361,9 @@ if __name__ == "__main__":
         toy_function,
         _bounds,
         n_objectives=len(_bounds),
-        n_iterations=40,
-        initial_samples=2 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
-        betas=np.array([2.0] * len(_bounds)),
+        n_iterations=50,
+        initial_samples=4 ** len(_bounds),  # 8 initial samples (2^3 for 3D space)
+        betas=np.array([4.0] * len(_bounds)),
         length_scales=np.array([2.0] * len(_bounds)),
     )
 
