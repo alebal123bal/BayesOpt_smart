@@ -200,6 +200,232 @@ def compute_prior_variance(y_vector, n_evaluations, n_objectives):
 
 
 @njit
+def compute_marginal_log_likelihood(
+    x_vector,
+    y_vector,
+    kernel_matrix,
+    prior_mean,
+    prior_variance,
+    length_scales,
+    current_eval,
+):
+    """
+    Compute the marginal log likelihood for the Gaussian process.
+    Normalizes outputs per objective so MLL values are comparable.
+    Computes the kernel matrix internally using update_k.
+    Sum the per-objective MLLs because the objectives are modeled as independent GPs.
+    The joint likelihood is the product of individual likelihoods, and taking logs
+    turns the product into a sum of the individual log-likelihoods.
+
+    Args:
+        x_vector (np.ndarray): (n_eval, n_features) training inputs.
+        y_vector (np.ndarray): (n_eval, n_objectives) objective values at evaluated points.
+        kernel_matrix (np.ndarray): Preallocated (n_objectives, n_eval, n_eval) matrix to store kernels.
+        prior_mean (np.ndarray): (n_objectives,) prior mean for each objective.
+        prior_variance (np.ndarray): (n_objectives,) prior variance for each objective.
+        length_scales (np.ndarray): (n_objectives,) Length scale for each objective.
+        current_eval (int): Number of evaluated points to consider.
+
+    Returns:
+        total_mll (float): Sum of MLL over all objectives.
+    """
+    # Compute kernel matrix for given hyperparameters
+    update_k_parallel(
+        kernel_matrix=kernel_matrix,
+        x_vector=x_vector,
+        last_eval=0,
+        current_eval=current_eval,
+        prior_variance=prior_variance,
+        length_scales=length_scales,
+    )
+
+    n_objectives = y_vector.shape[1]
+    n_points = current_eval
+    total_mll = 0.0
+
+    for obj_idx in range(n_objectives):
+        # Extract K for this objective and scale by prior variance
+        K = kernel_matrix[obj_idx, :n_points, :n_points] / prior_variance[obj_idx]
+
+        # Center and normalize outputs
+        y_centered = y_vector[:n_points, obj_idx] - prior_mean[obj_idx]
+        std_y = np.std(y_centered)
+        if std_y > 0.0:
+            y_centered /= std_y
+
+        # Cholesky decomposition
+        L = np.linalg.cholesky(K + 1e-8 * np.eye(n_points))
+
+        # Solve alpha = K^{-1} y_centered
+        alpha = np.linalg.solve(L.T, np.linalg.solve(L, y_centered))
+
+        # Term 1: data fit
+        data_fit_term = -0.5 * np.dot(y_centered, alpha)
+
+        # Term 2: complexity penalty (log determinant)
+        logdetK = 2.0 * np.sum(np.log(np.diag(L)))
+        complexity_term = -0.5 * logdetK
+
+        # Term 3: constant penalty
+        constant_term = -0.5 * n_points * np.log(2.0 * np.pi)
+
+        # Add to total MLL
+        total_mll += data_fit_term + complexity_term + constant_term
+
+    return total_mll
+
+
+@njit(parallel=True)
+def compute_marginal_log_likelihood_parallel(
+    x_vector,
+    y_vector,
+    kernel_matrix,
+    prior_mean,
+    prior_variance,
+    length_scales,
+    current_eval,
+):
+    """
+    Compute the marginal log likelihood for the Gaussian process in parallel.
+
+    Args:
+        x_vector (np.ndarray): (n_eval, n_features) training inputs.
+        y_vector (np.ndarray): (n_eval, n_objectives) objective values at evaluated points.
+        kernel_matrix (np.ndarray): Preallocated (n_objectives, n_eval, n_eval) matrix to store kernels.
+        prior_mean (np.ndarray): (n_objectives,) prior mean for each objective.
+        prior_variance (np.ndarray): (n_objectives,) prior variance for each objective.
+        length_scales (np.ndarray): (n_objectives,) Length scale for each objective.
+        current_eval (int): Number of evaluated points to consider.
+
+    Returns:
+        total_mll (float): Sum of MLL over all objectives.
+    """
+    # Compute kernel matrix for given hyperparameters (already parallelized)
+    update_k_parallel(
+        kernel_matrix=kernel_matrix,
+        x_vector=x_vector,
+        last_eval=0,
+        current_eval=current_eval,
+        prior_variance=prior_variance,
+        length_scales=length_scales,
+    )
+
+    n_objectives = y_vector.shape[1]
+    n_points = current_eval
+
+    # Store per-objective MLL to avoid race conditions
+    mll_values = np.empty(n_objectives, dtype=np.float64)
+
+    for obj_idx in prange(n_objectives):
+        # Ensure contiguous for Cholesky speed
+        K = np.ascontiguousarray(
+            kernel_matrix[obj_idx, :n_points, :n_points] / prior_variance[obj_idx]
+        )
+
+        # Center and normalize outputs
+        y_centered = np.ascontiguousarray(
+            y_vector[:n_points, obj_idx] - prior_mean[obj_idx]
+        )
+        std_y = np.std(y_centered)
+        if std_y > 0.0:
+            y_centered /= std_y
+
+        # Cholesky decomposition
+        L = np.linalg.cholesky(K + 1e-8 * np.eye(n_points))
+
+        # Solve alpha = K^{-1} y_centered
+        alpha = np.linalg.solve(L.T, np.linalg.solve(L, y_centered))
+
+        # Term 1: data fit
+        data_fit_term = -0.5 * np.dot(y_centered, alpha)
+
+        # Term 2: complexity penalty
+        logdetK = 2.0 * np.sum(np.log(np.diag(L)))
+        complexity_term = -0.5 * logdetK
+
+        # Term 3: constant penalty
+        constant_term = -0.5 * n_points * np.log(2.0 * np.pi)
+
+        # Store per-objective contribution
+        mll_values[obj_idx] = data_fit_term + complexity_term + constant_term
+
+    # Sum outside the parallel loop
+    return np.sum(mll_values)
+
+
+def optimize_hyperparams_mll(
+    x_vector,
+    y_vector,
+    kernel_matrix,
+    prior_mean,
+    prior_variance,
+    length_scales,
+    current_eval,
+):
+    """
+    Optimize GP hyperparameters (length_scales, prior_variance) by maximizing
+    the marginal log-likelihood (MLL). Uses a derivative-free method (Powell).
+
+    Updates `length_scales` and `prior_variance` IN PLACE.
+
+    Args:
+        x_vector (np.ndarray): (n_eval, n_features) training inputs.
+        y_vector (np.ndarray): (n_eval, n_objectives) training targets.
+        kernel_matrix (np.ndarray): (n_objectives, n_eval, n_eval) preallocated kernel buffer.
+        prior_mean (np.ndarray): (n_objectives,) prior means (unchanged).
+        prior_variance (np.ndarray): (n_objectives,) prior variances (updated in place).
+        length_scales (np.ndarray): (n_objectives,) length scales (updated in place).
+        current_eval (int): Number of evaluated points to consider.
+
+    Returns:
+        res (OptimizeResult): Result object from scipy.optimize.minimize.
+    """
+    n_objectives = y_vector.shape[1]
+
+    # Initial guess: concatenate length scales and variances
+    initial_guess = np.concatenate([length_scales, prior_variance])
+
+    # Bounds: enforce positivity
+    bounds = [(1e-5, None)] * (2 * n_objectives)
+
+    # Objective function: negative MLL (since minimize() is used)
+    def objective(params):
+        ls = params[:n_objectives]
+        var = params[n_objectives:]
+
+        mll = compute_marginal_log_likelihood_parallel(
+            x_vector=x_vector,
+            y_vector=y_vector,
+            kernel_matrix=kernel_matrix,
+            prior_mean=prior_mean,
+            prior_variance=var,
+            length_scales=ls,
+            current_eval=current_eval,
+        )
+
+        return -mll
+
+    # Run Powell optimization (derivative-free)
+    optim_result = minimize(
+        objective,
+        initial_guess,
+        method="Powell",
+        bounds=bounds,
+        options={
+            "xtol": 1e-3,  # stop tolerance for parameters
+            "ftol": 1e-4,  # stop tolerance for function value
+            "maxiter": 200,  # safeguard against long runs
+        },
+    )
+
+    # Update hyperparameters in place
+    length_scales[:] = optim_result.x[:n_objectives]
+    prior_variance[:] = optim_result.x[n_objectives:]
+
+    return optim_result
+
+
+@njit
 def update_k(
     kernel_matrix,
     x_vector,
@@ -614,232 +840,6 @@ def select_next_point(
 
     # All top candidates already evaluated
     return None
-
-
-@njit
-def compute_marginal_log_likelihood(
-    x_vector,
-    y_vector,
-    kernel_matrix,
-    prior_mean,
-    prior_variance,
-    length_scales,
-    current_eval,
-):
-    """
-    Compute the marginal log likelihood for the Gaussian process.
-    Normalizes outputs per objective so MLL values are comparable.
-    Computes the kernel matrix internally using update_k.
-    Sum the per-objective MLLs because the objectives are modeled as independent GPs.
-    The joint likelihood is the product of individual likelihoods, and taking logs
-    turns the product into a sum of the individual log-likelihoods.
-
-    Args:
-        x_vector (np.ndarray): (n_eval, n_features) training inputs.
-        y_vector (np.ndarray): (n_eval, n_objectives) objective values at evaluated points.
-        kernel_matrix (np.ndarray): Preallocated (n_objectives, n_eval, n_eval) matrix to store kernels.
-        prior_mean (np.ndarray): (n_objectives,) prior mean for each objective.
-        prior_variance (np.ndarray): (n_objectives,) prior variance for each objective.
-        length_scales (np.ndarray): (n_objectives,) Length scale for each objective.
-        current_eval (int): Number of evaluated points to consider.
-
-    Returns:
-        total_mll (float): Sum of MLL over all objectives.
-    """
-    # Compute kernel matrix for given hyperparameters
-    update_k_parallel(
-        kernel_matrix=kernel_matrix,
-        x_vector=x_vector,
-        last_eval=0,
-        current_eval=current_eval,
-        prior_variance=prior_variance,
-        length_scales=length_scales,
-    )
-
-    n_objectives = y_vector.shape[1]
-    n_points = current_eval
-    total_mll = 0.0
-
-    for obj_idx in range(n_objectives):
-        # Extract K for this objective and scale by prior variance
-        K = kernel_matrix[obj_idx, :n_points, :n_points] / prior_variance[obj_idx]
-
-        # Center and normalize outputs
-        y_centered = y_vector[:n_points, obj_idx] - prior_mean[obj_idx]
-        std_y = np.std(y_centered)
-        if std_y > 0.0:
-            y_centered /= std_y
-
-        # Cholesky decomposition
-        L = np.linalg.cholesky(K + 1e-8 * np.eye(n_points))
-
-        # Solve alpha = K^{-1} y_centered
-        alpha = np.linalg.solve(L.T, np.linalg.solve(L, y_centered))
-
-        # Term 1: data fit
-        data_fit_term = -0.5 * np.dot(y_centered, alpha)
-
-        # Term 2: complexity penalty (log determinant)
-        logdetK = 2.0 * np.sum(np.log(np.diag(L)))
-        complexity_term = -0.5 * logdetK
-
-        # Term 3: constant penalty
-        constant_term = -0.5 * n_points * np.log(2.0 * np.pi)
-
-        # Add to total MLL
-        total_mll += data_fit_term + complexity_term + constant_term
-
-    return total_mll
-
-
-@njit(parallel=True)
-def compute_marginal_log_likelihood_parallel(
-    x_vector,
-    y_vector,
-    kernel_matrix,
-    prior_mean,
-    prior_variance,
-    length_scales,
-    current_eval,
-):
-    """
-    Compute the marginal log likelihood for the Gaussian process in parallel.
-
-    Args:
-        x_vector (np.ndarray): (n_eval, n_features) training inputs.
-        y_vector (np.ndarray): (n_eval, n_objectives) objective values at evaluated points.
-        kernel_matrix (np.ndarray): Preallocated (n_objectives, n_eval, n_eval) matrix to store kernels.
-        prior_mean (np.ndarray): (n_objectives,) prior mean for each objective.
-        prior_variance (np.ndarray): (n_objectives,) prior variance for each objective.
-        length_scales (np.ndarray): (n_objectives,) Length scale for each objective.
-        current_eval (int): Number of evaluated points to consider.
-
-    Returns:
-        total_mll (float): Sum of MLL over all objectives.
-    """
-    # Compute kernel matrix for given hyperparameters (already parallelized)
-    update_k_parallel(
-        kernel_matrix=kernel_matrix,
-        x_vector=x_vector,
-        last_eval=0,
-        current_eval=current_eval,
-        prior_variance=prior_variance,
-        length_scales=length_scales,
-    )
-
-    n_objectives = y_vector.shape[1]
-    n_points = current_eval
-
-    # Store per-objective MLL to avoid race conditions
-    mll_values = np.empty(n_objectives, dtype=np.float64)
-
-    for obj_idx in prange(n_objectives):
-        # Ensure contiguous for Cholesky speed
-        K = np.ascontiguousarray(
-            kernel_matrix[obj_idx, :n_points, :n_points] / prior_variance[obj_idx]
-        )
-
-        # Center and normalize outputs
-        y_centered = np.ascontiguousarray(
-            y_vector[:n_points, obj_idx] - prior_mean[obj_idx]
-        )
-        std_y = np.std(y_centered)
-        if std_y > 0.0:
-            y_centered /= std_y
-
-        # Cholesky decomposition
-        L = np.linalg.cholesky(K + 1e-8 * np.eye(n_points))
-
-        # Solve alpha = K^{-1} y_centered
-        alpha = np.linalg.solve(L.T, np.linalg.solve(L, y_centered))
-
-        # Term 1: data fit
-        data_fit_term = -0.5 * np.dot(y_centered, alpha)
-
-        # Term 2: complexity penalty
-        logdetK = 2.0 * np.sum(np.log(np.diag(L)))
-        complexity_term = -0.5 * logdetK
-
-        # Term 3: constant penalty
-        constant_term = -0.5 * n_points * np.log(2.0 * np.pi)
-
-        # Store per-objective contribution
-        mll_values[obj_idx] = data_fit_term + complexity_term + constant_term
-
-    # Sum outside the parallel loop
-    return np.sum(mll_values)
-
-
-def optimize_hyperparams_mll(
-    x_vector,
-    y_vector,
-    kernel_matrix,
-    prior_mean,
-    prior_variance,
-    length_scales,
-    current_eval,
-):
-    """
-    Optimize GP hyperparameters (length_scales, prior_variance) by maximizing
-    the marginal log-likelihood (MLL). Uses a derivative-free method (Powell).
-
-    Updates `length_scales` and `prior_variance` IN PLACE.
-
-    Args:
-        x_vector (np.ndarray): (n_eval, n_features) training inputs.
-        y_vector (np.ndarray): (n_eval, n_objectives) training targets.
-        kernel_matrix (np.ndarray): (n_objectives, n_eval, n_eval) preallocated kernel buffer.
-        prior_mean (np.ndarray): (n_objectives,) prior means (unchanged).
-        prior_variance (np.ndarray): (n_objectives,) prior variances (updated in place).
-        length_scales (np.ndarray): (n_objectives,) length scales (updated in place).
-        current_eval (int): Number of evaluated points to consider.
-
-    Returns:
-        res (OptimizeResult): Result object from scipy.optimize.minimize.
-    """
-    n_objectives = y_vector.shape[1]
-
-    # Initial guess: concatenate length scales and variances
-    initial_guess = np.concatenate([length_scales, prior_variance])
-
-    # Bounds: enforce positivity
-    bounds = [(1e-5, None)] * (2 * n_objectives)
-
-    # Objective function: negative MLL (since minimize() is used)
-    def objective(params):
-        ls = params[:n_objectives]
-        var = params[n_objectives:]
-
-        mll = compute_marginal_log_likelihood_parallel(
-            x_vector=x_vector,
-            y_vector=y_vector,
-            kernel_matrix=kernel_matrix,
-            prior_mean=prior_mean,
-            prior_variance=var,
-            length_scales=ls,
-            current_eval=current_eval,
-        )
-
-        return -mll
-
-    # Run Powell optimization (derivative-free)
-    optim_result = minimize(
-        objective,
-        initial_guess,
-        method="Powell",
-        bounds=bounds,
-        options={
-            "xtol": 1e-3,  # stop tolerance for parameters
-            "ftol": 1e-4,  # stop tolerance for function value
-            "maxiter": 200,  # safeguard against long runs
-        },
-    )
-
-    # Update hyperparameters in place
-    length_scales[:] = optim_result.x[:n_objectives]
-    prior_variance[:] = optim_result.x[n_objectives:]
-
-    return optim_result
 
 
 # @njit
