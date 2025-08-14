@@ -1438,8 +1438,8 @@ if __name__ == "__main__":
         toy_function,
         _bounds,
         n_objectives=len(_bounds),
-        n_iterations=10,
         initial_samples=10,
+        n_iterations=5,
         batch_size=3,
         betas=np.array([2.0] * len(_bounds)),
     )
