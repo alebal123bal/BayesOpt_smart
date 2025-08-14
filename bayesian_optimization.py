@@ -648,7 +648,8 @@ def optimize_hyperparams_mll(
     def objective(params):
         ls = params[:n_objectives]
         var = params[n_objectives:]
-        return -compute_marginal_log_likelihood(
+
+        mll = compute_marginal_log_likelihood(
             x_vector=x_vector,
             y_vector=y_vector,
             kernel_matrix=kernel_matrix,
@@ -657,6 +658,8 @@ def optimize_hyperparams_mll(
             length_scales=ls,
             current_eval=current_eval,
         )
+
+        return -mll
 
     # Run Powell optimization (derivative-free)
     res = minimize(
