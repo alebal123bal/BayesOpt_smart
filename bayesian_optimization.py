@@ -973,6 +973,37 @@ def select_next_point(
     return None
 
 
+def select_next_batch(
+    input_space,
+    acquisition_values,
+    evaluated_points,
+    batch_size=3,
+):
+    """
+    Select a batch of points to evaluate based on acquisition values.
+
+    Args:
+        input_space (np.ndarray): All candidate input points.
+        acquisition_values (np.ndarray): Acquisition values for each candidate.
+        evaluated_points (np.ndarray): Points already evaluated.
+        batch_size (int): Number of points to select.
+
+    Returns:
+        np.ndarray: Array of shape (batch_size, n_dimensions) with new points.
+    """
+    sorted_indices = np.argsort(acquisition_values)[::-1]  # best → worst
+    batch = []
+
+    for idx in sorted_indices:
+        candidate = input_space[idx]
+        if not np.any(np.all(candidate == evaluated_points, axis=1)):
+            batch.append(candidate)
+            if len(batch) == batch_size:
+                break
+
+    return np.array(batch)
+
+
 # @njit
 def optimize(
     x_vector,
@@ -990,11 +1021,12 @@ def optimize(
     prior_variance,
     reference_point,  # pylint: disable=unused-argument
     n_evaluations,
-    n_iterations,
+    total_samples,
     n_objectives,  # pylint: disable=unused-argument
     function,
     betas,
     length_scales,
+    batch_size,
 ):
     """
     Perform the Multi-Objective Bayesian optimization.
@@ -1011,11 +1043,12 @@ def optimize(
         prior_variance (np.ndarray): Prior variance for each objective.
         reference_point (np.ndarray): Reference point for hypervolume calculation.
         n_evaluations (int): Number of evaluations already performed.
-        n_iterations (int): Total number of iterations.
+        total_samples (int): Total number of samples.
         n_objectives (int): Number of objectives.
         function (callable): The function to optimize.
         betas (np.ndarray): Exploration-exploitation trade-off parameters.
         length_scales (np.ndarray): Length scale parameters for the kernel.
+        batch_size (int): Number of points to evaluate in each batch.
 
     Returns:
         tuple: Updated x_vector, y_vector, and number of evaluations.
@@ -1027,12 +1060,13 @@ def optimize(
     # Profile time
     total_start = time.perf_counter()
 
-    for current_eval in range(n_evaluations, n_iterations):
+    for current_eval in range(n_evaluations, total_samples, batch_size):
         # Profile iteration start time
         iter_start = time.perf_counter()
 
         if DEBUG_MODE:
             print(
+                "\n"
                 f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={current_eval}"
             )
 
@@ -1134,44 +1168,37 @@ def optimize(
             ucb=ucb,
         )
 
-        # Select the next point to evaluate
-        x_next = select_next_point(
+        # Select the next batch of points to evaluate
+        x_next = select_next_batch(
             input_space=input_space,
             acquisition_values=acquisition_values,
             evaluated_points=x_vector[:current_eval],
-            max_candidates=20,
+            batch_size=batch_size,
         )
 
         # Profile prediction and acquisition time
         t3 = time.perf_counter()
 
-        if x_next is None:
+        if DEBUG_MODE:
+            print("🔍 Debug: Selected next batch:")
+
+        # Evaluate the function at the new points
+        for b_idx, point in enumerate(x_next):
+            # Evaluate the function at the new point
+            x_vector[current_eval + b_idx] = point
+            y_vector[current_eval + b_idx] = function(point)
+
             if DEBUG_MODE:
                 print(
-                    "🎯 Debug: All top candidates already evaluated, stopping optimization\n"
+                    f"🔍 Debug: Evaluating point {point} "
+                    f"| Objectives = {y_vector[current_eval + b_idx]}"
                 )
-            break  # Early stop
-
-        if DEBUG_MODE:
-            # Find acquisition value for the chosen point
-            idx = np.where((input_space == x_next).all(axis=1))[0][0]
-            print(
-                f"🔍 Debug: Selected next point: {x_next} "
-                f"with hypervolume improvement {acquisition_values[idx]:.4f}"
-            )
 
         # Update the total number of evaluations
         last_eval = current_eval
 
-        # Evaluate the function at the new point
-        x_vector[current_eval] = x_next
-        y_vector[current_eval] = function(x_next)
-
         # Profile evaluation time
         t4 = time.perf_counter()
-
-        if DEBUG_MODE:
-            print(f"✅ Debug: Objective values: {y_vector[current_eval]}\n")
 
         print(
             f"[Iter {current_eval}] "
@@ -1258,6 +1285,9 @@ class BayesianOptimization:
             kwargs.get("betas", [1.0] * n_objectives),
         )
 
+        # If batch_size is not provided, set it to 3
+        self.batch_size = kwargs.get("batch_size", 3)
+
         # Initial number of samples to evaluate
         self.initial_samples = kwargs.get("initial_samples", 3)
 
@@ -1269,18 +1299,24 @@ class BayesianOptimization:
         mesh = np.meshgrid(*ranges, indexing="ij")
         self.input_space = np.stack([m.ravel() for m in mesh], axis=-1)
 
+        # Calculate total samples
+        self.total_samples = self.initial_samples + self.n_iterations * self.batch_size
+
         # Preallocate the function evaluations
-        self.x_vector = np.zeros((n_iterations, self.dim))
-        self.y_vector = np.zeros((n_iterations, n_objectives))  # Multiple objectives
+        self.x_vector = np.zeros((self.total_samples, self.dim))
+        self.y_vector = np.zeros(
+            (self.total_samples, n_objectives)
+        )  # Multiple objectives
 
         # Preallocate the kernel matrices for each objective
         self.kernel_matrices = np.zeros(
-            (self.n_objectives, self.n_iterations, self.n_iterations), dtype=np.float64
+            (self.n_objectives, self.total_samples, self.total_samples),
+            dtype=np.float64,
         )
 
         # Preallocate the kernel vector kstar for each objective
         self.k_star = np.zeros(
-            (self.n_objectives, self.n_iterations, len(self.input_space)),
+            (self.n_objectives, self.total_samples, len(self.input_space)),
             dtype=np.float64,
         )
 
@@ -1356,11 +1392,12 @@ class BayesianOptimization:
             prior_variance=self.prior_variance,
             reference_point=self.reference_point,
             n_evaluations=self.n_evaluations,
-            n_iterations=self.n_iterations,
+            total_samples=self.total_samples,
             n_objectives=self.n_objectives,
             function=self.function,
             betas=self.betas,
             length_scales=self.length_scales,
+            batch_size=self.batch_size,
         )
 
     def pareto_analysis(self):
@@ -1401,10 +1438,10 @@ if __name__ == "__main__":
         toy_function,
         _bounds,
         n_objectives=len(_bounds),
-        n_iterations=50,
+        n_iterations=10,
         initial_samples=10,
+        batch_size=3,
         betas=np.array([2.0] * len(_bounds)),
-        length_scales=np.array([2.0] * len(_bounds)),
     )
 
     optimizer.optimize()
