@@ -15,7 +15,7 @@ if DEBUG_MODE:
     print("🐛 DEBUG MODE - Numba disabled")
 
     # Dummy njit decorator
-    def njit(*args, **kwargs):
+    def njit(*args, **kwargs):  # pylint: disable=unused-argument
         """Dummy njit decorator for debugging."""
 
         def decorator(func):
@@ -65,45 +65,8 @@ def toy_function(x):
 
 @njit
 def initialize_samples(x_vector, y_vector, bounds, function, n_samples=8):
-    """
-    Initialize sample points using uniform grid sampling for maximum coverage.
-
-    Args:
-        x_vector (np.ndarray): Array to store evaluated points.
-        y_vector (np.ndarray): Array to store objective values at evaluated points.
-        bounds (np.ndarray): Array of (min, max) bounds for each dimension.
-        function (callable): The function to optimize.
-        n_samples (int): Number of initial samples to generate.
-
-    Returns:
-        int: Number of evaluations performed.
-    """
-
-    dim = len(bounds)
-
-    # Calculate grid size for uniform distribution
-    # For n_samples points in dim dimensions: grid_size = ceil(n_samples^(1/dim))
-    grid_size = int(np.ceil(n_samples ** (1.0 / dim)))
-
-    # Generate uniform grid points
-    initial_guesses = generate_uniform_grid(bounds, dim, grid_size, n_samples)
-
-    # Evaluate all initial samples
-    n_evaluations = 0
-    for i in range(len(initial_guesses)):  # pylint: disable=consider-using-enumerate
-        x_vector[i] = initial_guesses[i]
-        y_vector[i] = function(x_vector[i])
-        n_evaluations += 1
-
-        if DEBUG_MODE:
-            print(
-                f"➡️  Debug: Initial sample {i+1}: x = {x_vector[i]}, y = {y_vector[i]}"
-            )
-
-    if DEBUG_MODE:
-        print(f"🎯 Debug: Initialized {n_evaluations} samples uniformly.\n")
-
-    return n_evaluations
+    # TODO
+    pass
 
 
 @njit
@@ -1057,18 +1020,14 @@ def optimize(
     # Total number of evaluations
     last_eval = 0
 
-    # Profile time
-    total_start = time.perf_counter()
-
     for current_eval in range(n_evaluations, total_samples, batch_size):
         # Profile iteration start time
         iter_start = time.perf_counter()
 
-        if DEBUG_MODE:
-            print(
-                "\n"
-                f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={current_eval}"
-            )
+        print(
+            "\n"
+            f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={current_eval}"
+        )
 
         # Profile initial time
         t0 = time.perf_counter()
@@ -1086,13 +1045,10 @@ def optimize(
         # Profile hyperparameter optimization time
         t1 = time.perf_counter()
 
-        if DEBUG_MODE:
-            print(
-                "🔄 Debug: Optimized hyperparameters:",
-                np.array2string(
-                    optimized_hyperparams.x, precision=2, suppress_small=True
-                ),
-            )
+        print(
+            "🔄 Debug: Optimized hyperparameters:",
+            np.array2string(optimized_hyperparams.x, precision=2, suppress_small=True),
+        )
 
         # Update kernel matrices for each objective
         update_k_parallel(
@@ -1179,8 +1135,7 @@ def optimize(
         # Profile prediction and acquisition time
         t3 = time.perf_counter()
 
-        if DEBUG_MODE:
-            print("🔍 Debug: Selected next batch:")
+        print("🔍 Debug: Selected next batch:")
 
         # Evaluate the function at the new points
         for b_idx, point in enumerate(x_next):
@@ -1188,11 +1143,10 @@ def optimize(
             x_vector[current_eval + b_idx] = point
             y_vector[current_eval + b_idx] = function(point)
 
-            if DEBUG_MODE:
-                print(
-                    f"🔍 Debug: Evaluating point {point} "
-                    f"| Objectives = {y_vector[current_eval + b_idx]}"
-                )
+            print(
+                f"🔍 Debug: Evaluating point {point} "
+                f"| Objectives = {y_vector[current_eval + b_idx]}"
+            )
 
         # Update the total number of evaluations
         last_eval = current_eval
