@@ -64,63 +64,6 @@ def toy_function(x):
 
 
 @njit
-def initialize_samples(x_vector, y_vector, bounds, function, n_samples=8):
-    # TODO
-    pass
-
-
-@njit
-def generate_uniform_grid(bounds, dim, grid_size, max_samples):
-    """
-    Generate uniformly distributed grid points within bounds.
-
-    Args:
-        bounds (np.ndarray): Array of (min, max) bounds for each dimension.
-        dim (int): Number of dimensions.
-        grid_size (int): Number of points per dimension.
-        max_samples (int): Maximum number of samples to return.
-
-    Returns:
-        list: List of uniformly distributed sample points.
-    """
-
-    # Create grid coordinates for each dimension
-    grid_coords = []
-    for d in range(dim):
-        min_val, max_val = bounds[d][0], bounds[d][1]
-
-        if grid_size == 1:
-            # If only one point per dimension, use midpoint
-            coords = np.array([(min_val + max_val) // 2], dtype=np.int32)
-        else:
-            # Create evenly spaced points including endpoints
-            coords = np.linspace(min_val, max_val, grid_size).astype(np.int32)
-
-        grid_coords.append(coords)
-
-    # Generate all combinations of grid coordinates
-    samples = []
-    total_combinations = grid_size**dim
-
-    for i in range(min(total_combinations, max_samples)):
-        sample = np.zeros(dim, dtype=np.int32)
-
-        # Convert linear index to multi-dimensional coordinates
-        temp_i = i
-        for d in range(dim):
-            coord_idx = temp_i % grid_size
-            sample[d] = grid_coords[d][coord_idx]
-            temp_i //= grid_size
-
-        samples.append(sample)
-
-        if len(samples) >= max_samples:
-            break
-
-    return samples
-
-
-@njit
 def initialize_lhs_integer(x_vector, y_vector, bounds, function, n_samples=8):
     """
     Initialize sample points using Latin Hypercube Sampling (LHS) for integer design spaces.
