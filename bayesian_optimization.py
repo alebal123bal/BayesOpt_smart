@@ -7,7 +7,6 @@ import time
 import numpy as np
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
-from matplotlib import cm
 
 # Debug flag - setup from launch configuration or environment variable
 DEBUG_MODE = os.environ.get("BAYESIAN_DEBUG", "False").lower() in ("true", "1", "yes")
@@ -749,7 +748,10 @@ def update_variance_parallel(
             quadratic_form[j] = s
 
         # Compute variances
-        variance_objectives[obj_idx, :] = prior_variance[obj_idx] - quadratic_form
+        variance = prior_variance[obj_idx] - quadratic_form
+        variance_objectives[obj_idx, :] = np.maximum(
+            variance, 1e-10
+        )  # Prevent negative or zero variance
 
 
 @njit
