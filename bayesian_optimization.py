@@ -6,6 +6,8 @@ import os
 import time
 import numpy as np
 from scipy.optimize import minimize
+import matplotlib.pyplot as plt
+from matplotlib import cm
 
 # Debug flag - setup from launch configuration or environment variable
 DEBUG_MODE = os.environ.get("BAYESIAN_DEBUG", "False").lower() in ("true", "1", "yes")
@@ -960,6 +962,12 @@ def optimize(
         tuple: Updated x_vector, y_vector, and number of evaluations.
     """
 
+    print(f"🚀 Starting optimization with {n_evaluations} initial evaluations.")
+
+    # Print initial evaluated points
+    for i in range(n_evaluations):
+        print(f"🔍 Debug: Initial point {x_vector[i]} | Objectives = {y_vector[i]}")
+
     # Total number of evaluations
     last_eval = 0
 
@@ -1106,6 +1114,17 @@ def optimize(
             f"TOTAL: {t4 - iter_start:.4f}s"
         )
 
+        # Plot
+        if x_vector.shape[1] == 2:
+            heatmap_plot(
+                x_vector=x_vector[: current_eval + batch_size],
+                y_vector=y_vector[: current_eval + batch_size],
+                bounds=((0, X_MAX), (0, Y_MAX)),
+                mu_objectives=mu_objectives,
+                variance_objectives=variance_objectives,
+                acquisition_values=acquisition_values,
+            )
+
     return x_vector, y_vector, last_eval + 1
 
 
@@ -1134,6 +1153,39 @@ def is_pareto_efficient(y_vector):
                 is_efficient[j] = False
 
     return is_efficient
+
+
+def heatmap_plot(
+    x_vector,
+    y_vector,
+    bounds,
+    mu_objectives,
+    variance_objectives,
+    acquisition_values,
+):
+    """
+    Use a side-by-side contour/filled contour plot with overlayed sampled points, where:
+
+    Left plot: Mean prediction (μ(x, y)) → What the model thinks the objective value is
+    Right plot: Standard deviation (σ(x, y)) → How uncertain the model is
+    Overlay: Evaluated points (color-coded by actual objective value if any)
+    Stars: next selected point(s) to evaluate
+    Color maps: Carefully chosen for perceptual clarity and contrast
+
+    Args:
+        x_vector (np.ndarray): Evaluated points.
+        y_vector (np.ndarray): Objective values at evaluated points.
+        bounds (tuple): Bounds for the input variables.
+        mu_objectives (np.ndarray): Mean predictions for each objective.
+        variance_objectives (np.ndarray): Variance predictions for each objective.
+        acquisition_values (np.ndarray): Acquisition function values for each point.
+    """
+
+    # TODO improve this
+
+    # The mean and variance are enumerated for each objective as a cartesian product
+    # so like (0,0), (0,1), (0,2), (1,0), (1,1), (1,2), (2,0), (2,1), (2,2)
+    pass
 
 
 class BayesianOptimization:
