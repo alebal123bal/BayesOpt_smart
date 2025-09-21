@@ -53,7 +53,7 @@ def toy_function(x):
         np.ndarray: Output array containing [f(x), g(x), h(x)].
     """
     f_x = -((x[0] - 12) ** 2) + 100
-    g_x = -((x[1] - 1) ** 2) + 20
+    g_x = -((x[1] - 20) ** 2) + 20
     # h_x = -((x[2] - 5) ** 2) + 120
 
     return np.array(
@@ -1087,6 +1087,20 @@ def optimize(
         t3 = time.perf_counter()
 
         print("🔍 Debug: Selected next batch:")
+        for point in x_next:
+            print(f" - {point}")
+
+        # Plot
+        if x_vector.shape[1] == 2:
+            heatmap_plot(
+                x_vector=x_vector[: current_eval + batch_size],
+                y_vector=y_vector[: current_eval + batch_size],
+                bounds=((0, X_MAX), (0, Y_MAX)),
+                mu_objectives=mu_objectives,
+                variance_objectives=variance_objectives,
+                acquisition_values=acquisition_values,
+                x_next=x_next,
+            )
 
         # Evaluate the function at the new points
         for b_idx, point in enumerate(x_next):
@@ -1113,17 +1127,6 @@ def optimize(
             f"Eval: {t4 - t3:.4f}s | "
             f"TOTAL: {t4 - iter_start:.4f}s"
         )
-
-        # Plot
-        if x_vector.shape[1] == 2:
-            heatmap_plot(
-                x_vector=x_vector[: current_eval + batch_size],
-                y_vector=y_vector[: current_eval + batch_size],
-                bounds=((0, X_MAX), (0, Y_MAX)),
-                mu_objectives=mu_objectives,
-                variance_objectives=variance_objectives,
-                acquisition_values=acquisition_values,
-            )
 
     return x_vector, y_vector, last_eval + 1
 
@@ -1162,30 +1165,169 @@ def heatmap_plot(
     mu_objectives,
     variance_objectives,
     acquisition_values,
+    x_next,
 ):
     """
-    Use a side-by-side contour/filled contour plot with overlayed sampled points, where:
+    Plot mean and uncertainty (standard deviation) for each objective in a 2D design space.
+    One row per objective: [Mean Plot | Uncertainty Plot | Acquisition Plot].
 
-    Left plot: Mean prediction (μ(x, y)) → What the model thinks the objective value is
-    Right plot: Standard deviation (σ(x, y)) → How uncertain the model is
-    Overlay: Evaluated points (color-coded by actual objective value if any)
-    Stars: next selected point(s) to evaluate
-    Color maps: Carefully chosen for perceptual clarity and contrast
+    Uses exact bounds without +1 (Python-exclusive upper limit: e.g., (0, 30) → 0 to 29 inclusive).
+    Overlays evaluated points (colored by true objective value on mean plot).
+    Highlights next candidate points with red stars only in the Acquisition Plot.
+
+    Uses imshow for discrete grid plotting — no frame/artifacts.
 
     Args:
-        x_vector (np.ndarray): Evaluated points.
-        y_vector (np.ndarray): Objective values at evaluated points.
-        bounds (tuple): Bounds for the input variables.
-        mu_objectives (np.ndarray): Mean predictions for each objective.
-        variance_objectives (np.ndarray): Variance predictions for each objective.
-        acquisition_values (np.ndarray): Acquisition function values for each point.
+        x_vector (np.ndarray): Evaluated points, shape (n_eval, dim)
+        y_vector (np.ndarray): Objective values, shape (n_eval, n_objectives)
+        bounds (list of tuples): [(x_min, x_max), (y_min, y_max)] -- exclusive upper bound
+        mu_objectives (np.ndarray): Mean predictions, shape (n_objectives, n_grid_points)
+        variance_objectives (np.ndarray): Variance predictions, shape (n_objectives, n_grid_points)
+        acquisition_values (np.ndarray): Acquisition values per grid point, shape (n_grid_points,)
+        x_next (np.ndarray): Next candidate points to evaluate, shape (n_next, dim)
     """
+    dim = x_vector.shape[1]
+    n_objectives = y_vector.shape[1]
 
-    # TODO improve this
+    if dim != 2:
+        print("⚠️ heatmap_plot only supports 2D input space. Skipping plot.")
+        return
 
-    # The mean and variance are enumerated for each objective as a cartesian product
-    # so like (0,0), (0,1), (0,2), (1,0), (1,1), (1,2), (2,0), (2,1), (2,2)
-    pass
+    x_min, x_max = bounds[0]
+    y_min, y_max = bounds[1]
+
+    # Generate grid using exclusive upper bounds (Pythonic: 0 to 30 → 0,1,...,29)
+    x_grid = np.arange(x_min, x_max)  # shape: (30,)
+    y_grid = np.arange(y_min, y_max)  # shape: (30,)
+    nx, ny = len(x_grid), len(y_grid)
+
+    # Reshape predictions to 2D grid (ny, nx) because imshow expects [y, x]
+    mu_grids = [mu.reshape(ny, nx) for mu in mu_objectives]
+    var_grids = [var.reshape(ny, nx) for var in variance_objectives]
+    sigma_grids = [np.sqrt(var) for var in var_grids]
+    acquisition_grid = acquisition_values.reshape(ny, nx)
+
+    # Create subplots: one row per objective, three columns
+    fig, axs = plt.subplots(
+        n_objectives, 3, figsize=(21, 5 * n_objectives), constrained_layout=True
+    )
+    if n_objectives == 1:
+        axs = axs.reshape(1, -1)
+
+    fig.suptitle(
+        "Bayesian Optimization Surrogate Model (2D)", fontsize=18, fontweight="bold"
+    )
+
+    for obj_idx in range(n_objectives):
+        mu = mu_grids[obj_idx]
+        sigma = sigma_grids[obj_idx]
+        acq = acquisition_grid
+
+        # Define extent: [left, right, bottom, top] — matches grid exactly
+        extent = [x_min - 0.5, x_max - 0.5, y_min - 0.5, y_max - 0.5]
+
+        # Left: Mean prediction
+        ax_mean = axs[obj_idx, 0]
+        im1 = ax_mean.imshow(
+            mu,
+            origin="lower",
+            extent=extent,
+            cmap="viridis",
+            aspect="auto",
+            interpolation="none",
+        )
+        ax_mean.set_title(f"Objective {obj_idx}: Mean Prediction (μ)", fontsize=13)
+        # Scatter evaluated points (x,y) — already in integer coordinates
+        scatter_mean = ax_mean.scatter(
+            x_vector[:, 0],
+            x_vector[:, 1],
+            c=y_vector[:, obj_idx],
+            cmap="plasma",
+            s=50,
+            edgecolors="black",
+            linewidth=0.7,
+            label="Evaluated Points",
+        )
+        ax_mean.set_xlabel("x")
+        ax_mean.set_ylabel("y")
+        ax_mean.legend(loc="upper right", fontsize=10)
+        ax_mean.grid(True, linestyle=":", alpha=0.5)
+        plt.colorbar(im1, ax=ax_mean, shrink=0.8, label="Objective Value")
+
+        # Middle: Uncertainty (σ)
+        ax_uncert = axs[obj_idx, 1]
+        im2 = ax_uncert.imshow(
+            sigma,
+            origin="lower",
+            extent=extent,
+            cmap="hot",
+            aspect="auto",
+            interpolation="none",
+        )
+        ax_uncert.set_title(f"Objective {obj_idx}: Uncertainty (σ)", fontsize=13)
+        ax_uncert.scatter(
+            x_vector[:, 0],
+            x_vector[:, 1],
+            c="white",
+            edgecolors="black",
+            s=50,
+            linewidth=0.7,
+            label="Evaluated Points",
+        )
+        ax_uncert.set_xlabel("x")
+        ax_uncert.set_ylabel("y")
+        ax_uncert.legend(loc="upper right", fontsize=10)
+        ax_uncert.grid(True, linestyle=":", alpha=0.5)
+        plt.colorbar(im2, ax=ax_uncert, shrink=0.8, label="Standard Deviation")
+
+        # Right: Acquisition Function
+        ax_acq = axs[obj_idx, 2]
+        im3 = ax_acq.imshow(
+            acq,
+            origin="lower",
+            extent=extent,
+            cmap="cividis",
+            aspect="auto",
+            interpolation="none",
+        )
+        ax_acq.set_title(
+            f"Objective {obj_idx}: Acquisition Function (HVI)", fontsize=13
+        )
+        ax_acq.scatter(
+            x_vector[:, 0],
+            x_vector[:, 1],
+            c="white",
+            edgecolors="black",
+            s=50,
+            linewidth=0.7,
+            label="Evaluated Points",
+        )
+        # Only show next points in acquisition plot
+        if x_next is not None and len(x_next) > 0:
+            ax_acq.scatter(
+                x_next[:, 0],
+                x_next[:, 1],
+                marker="*",
+                color="red",
+                s=120,
+                edgecolors="darkred",
+                linewidth=2,
+                label="Next Samples",
+            )
+        ax_acq.set_xlabel("x")
+        ax_acq.set_ylabel("y")
+        ax_acq.legend(loc="upper right", fontsize=10)
+        ax_acq.grid(True, linestyle=":", alpha=0.5)
+        plt.colorbar(im3, ax=ax_acq, shrink=0.8, label="Acquisition Value")
+
+        # Set ticks to integer positions
+        for ax in [ax_mean, ax_uncert, ax_acq]:
+            ax.set_xticks(range(x_min, x_max))
+            ax.set_yticks(range(y_min, y_max))
+            ax.set_xlim(x_min - 0.5, x_max - 0.5)
+            ax.set_ylim(y_min - 0.5, y_max - 0.5)
+
+    plt.show()
 
 
 class BayesianOptimization:
