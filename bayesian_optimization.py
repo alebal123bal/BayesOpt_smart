@@ -374,45 +374,6 @@ def optimize_hyperparams_mll(
     return optim_result
 
 
-@njit
-def update_k(
-    kernel_matrix,
-    x_vector,
-    last_eval,
-    current_eval,
-    prior_variance,
-    length_scales,
-):
-    """
-    Compute the kernel matrix for the training points for each objective.
-
-    Args:
-        kernel_matrix (np.ndarray): (n_objectives, n_points, n_points) Preallocated kernel matrix to fill.
-        x_vector (np.ndarray): (n_points, n_features) Training points.
-        last_eval (int): Last evaluation number.
-        current_eval (int): Current number of evaluations.
-        prior_variance (np.ndarray): (n_objectives,) Variance parameter for each objective's kernel.
-        length_scales (np.ndarray): (n_objectives,) Length scale parameters for each objective's kernel.
-    """
-    n_objectives = kernel_matrix.shape[0]
-
-    for i in range(last_eval, current_eval):
-        for j in range(0, current_eval):
-            # Compute the squared distance between points i and j
-            diff = x_vector[i] - x_vector[j]
-            sq_dist = np.dot(diff, diff)
-
-            for obj_idx in range(n_objectives):
-                # Compute RBF kernel with the length scale for this objective
-                k_val = prior_variance[obj_idx] * np.exp(
-                    -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
-                )
-
-                # Fill in the kernel matrix
-                kernel_matrix[obj_idx, i, j] = k_val
-                kernel_matrix[obj_idx, j, i] = k_val  # symmetry
-
-
 @njit(parallel=True, fastmath=True)
 def update_k_parallel(
     kernel_matrix,
@@ -496,50 +457,6 @@ def invert_k(current_eval, kernel_matrix, prior_variance):
     return kernel_matrix_inv
 
 
-@njit
-def update_k_star(
-    k_star,
-    x_vector,
-    input_space,
-    last_eval,
-    current_eval,
-    prior_variance,
-    length_scales,
-):
-    """
-    Update the kernel vector for new points based on the training points.
-
-    Args:
-        k_star (np.ndarray): (n_objectives, n_points, n_candidates) Preallocated kernel vector.
-        x_vector (np.ndarray): (n_points, n_features) Training points.
-        input_space (np.ndarray): (n_candidates, n_features) Discretized input space.
-        last_eval (int): Last evaluation index.
-        current_eval (int): Current number of evaluations.
-        prior_variance (np.ndarray): (n_objectives,) Variance parameter for each objective's kernel.
-        length_scales (np.ndarray): (n_objectives,) Length scale parameter for each objective's kernel.
-    """
-    n_objectives = k_star.shape[0]
-    n_candidates = len(input_space)
-
-    for e in range(last_eval, current_eval):
-        eval_x = x_vector[e]
-        for i in range(n_candidates):
-            # Get the candidate point
-            x_star = input_space[i]
-
-            # Compute the squared distance between points
-            diff = eval_x - x_star
-            sq_dist = np.dot(diff, diff)
-
-            for obj_idx in range(n_objectives):
-                # Compute RBF kernel with the length scale for this objective
-                k_val = prior_variance[obj_idx] * np.exp(
-                    -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
-                )
-                # Fill in the k star
-                k_star[obj_idx, e, i] = k_val
-
-
 @njit(parallel=True, fastmath=True)
 def update_k_star_parallel(
     k_star,
@@ -577,51 +494,6 @@ def update_k_star_parallel(
             k_star[obj_idx, e, i] = prior_variance[obj_idx] * np.exp(
                 -0.5 * sq_dist / (length_scales[obj_idx] ** 2)
             )
-
-
-@njit
-def update_mean(
-    mu_objectives,
-    k_star,
-    inverted_kernel_matrix,
-    y_vector,
-    prior_mean,
-    current_eval,
-):
-    """
-    Update the mean predictions for each objective based on the kernel vector and training points.
-
-    Args:
-        mu_objectives (np.ndarray): Preallocated mean predictions for each objective.
-        k_star (np.ndarray): Kernel vector for the new point.
-        inverted_kernel_matrix (np.ndarray): Inverted kernel matrix for the training points.
-        y_vector (np.ndarray): Objective values at evaluated points.
-        prior_mean (np.ndarray): Prior mean for each objective.
-        current_eval (int): Current number of evaluations.
-    """
-
-    n_objectives = mu_objectives.shape[0]
-
-    for obj_idx in range(n_objectives):
-        # Access the inverted kernel matrix for this objective
-        kernel_matrix_inv = inverted_kernel_matrix[obj_idx]
-
-        # Precompute delta_y
-        delta_y = np.ascontiguousarray(
-            y_vector[:current_eval, obj_idx] - prior_mean[obj_idx]
-        )
-
-        # Extract k_star for this objective and ensure contiguous
-        k_star_obj = np.ascontiguousarray(k_star[obj_idx, :current_eval, :])
-
-        # Vectorized computation: k_star.T @ (K_inv @ delta_y)
-        partial_result = kernel_matrix_inv @ delta_y
-
-        # Transpose k_star for proper matrix multiplication
-        k_star_t = np.ascontiguousarray(k_star_obj.T)  # (n_points, current_eval)
-
-        # Compute all means at once
-        mu_objectives[obj_idx, :] = prior_mean[obj_idx] + k_star_t @ partial_result
 
 
 @njit
@@ -663,48 +535,6 @@ def update_mean_parallel(
         mu_objectives[obj_idx, :] = (
             prior_mean[obj_idx] + np.ascontiguousarray(k_star_obj_c.T) @ partial_result
         )
-
-
-@njit
-def update_variance(
-    variance_objectives,
-    k_star,
-    inverted_kernel_matrix,
-    prior_variance,
-    current_eval,
-):
-    """
-    Update the variance predictions for each objective based on the kernel vector
-    and training points.
-
-    Args:
-        variance_objectives (np.ndarray): Preallocated variance predictions for each objective.
-        k_star (np.ndarray): Kernel vector for the new point.
-        inverted_kernel_matrix (np.ndarray): Inverted kernel matrix for the training points.
-        prior_variance (np.ndarray): Prior variance for each objective.
-        current_eval (int): Current number of evaluations.
-    """
-
-    n_objectives = variance_objectives.shape[0]
-
-    for obj_idx in range(n_objectives):
-        # Access the inverted kernel matrix for this objective
-        kernel_matrix_inv = inverted_kernel_matrix[obj_idx]
-
-        # Extract k_star for this objective and ensure contiguous
-        k_star_obj = np.ascontiguousarray(k_star[obj_idx, :current_eval, :])
-
-        # Transpose k_star for proper matrix operations
-        k_star_t = np.ascontiguousarray(k_star_obj.T)  # (n_points, current_eval)
-
-        # Vectorized computation: k_star.T @ K_inv @ k_star
-        intermediate = kernel_matrix_inv @ k_star_obj  # (current_eval, n_points)
-
-        # Second: k_star.T @ intermediate -> (n_points,)
-        quadratic_form = np.sum(k_star_t * intermediate.T, axis=1)
-
-        # Compute all variances at once
-        variance_objectives[obj_idx, :] = prior_variance[obj_idx] - quadratic_form
 
 
 @njit
