@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 # Debug flag - setup from launch configuration or environment variable
 DEBUG_MODE = os.environ.get("BAYESIAN_DEBUG", "False").lower() in ("true", "1", "yes")
 
+np.random.seed(42)
+
 # Conditional imports and setup
 if DEBUG_MODE:
     print("🐛 DEBUG MODE - Numba disabled")
@@ -957,11 +959,11 @@ def heatmap_plot(
     y_grid = np.arange(y_min, y_max)  # shape: (30,)
     nx, ny = len(x_grid), len(y_grid)
 
-    # Reshape predictions to 2D grid (ny, nx) because imshow expects [y, x]
-    mu_grids = [mu.reshape(ny, nx) for mu in mu_objectives]
-    var_grids = [var.reshape(ny, nx) for var in variance_objectives]
+    # Reshape predictions to 2D grid - input_space uses "ij" indexing, so reshape as (nx, ny) then transpose
+    mu_grids = [mu.reshape(nx, ny).T for mu in mu_objectives]
+    var_grids = [var.reshape(nx, ny).T for var in variance_objectives]
     sigma_grids = [np.sqrt(var) for var in var_grids]
-    acquisition_grid = acquisition_values.reshape(ny, nx)
+    acquisition_grid = acquisition_values.reshape(nx, ny).T
 
     # Create subplots: one row per objective, three columns
     fig, axs = plt.subplots(
