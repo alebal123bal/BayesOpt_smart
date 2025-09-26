@@ -80,6 +80,7 @@ def initialize_lhs_integer(x_vector, y_vector, bounds, function, n_samples=8):
         x_vector (np.ndarray): (n_samples, n_dimensions) Array to store evaluated points.
         y_vector (np.ndarray): (n_samples, n_objectives) Array to store objective values.
         bounds (np.ndarray): (n_dimensions, 2) Array of (min, max) integer bounds for each dimension.
+                            Upper bound is exclusive (e.g., (0, 30) means 0-29 inclusive).
         function (callable): The function to evaluate, taking a 1D integer array as input.
         n_samples (int): Number of initial samples to generate.
 
@@ -93,14 +94,17 @@ def initialize_lhs_integer(x_vector, y_vector, bounds, function, n_samples=8):
         # Create a random permutation of bin indices
         perm = np.random.permutation(n_samples)
         min_val, max_val = bounds[d, 0], bounds[d, 1]
-        step = (max_val - min_val + 1) / n_samples  # bin width in integer space
+        step = (
+            max_val - min_val
+        ) / n_samples  # bin width in integer space (exclusive upper bound)
 
         for i in range(n_samples):
             # Random offset within the bin
             low = min_val + perm[i] * step
             high = min_val + (perm[i] + 1) * step
-            # Random integer in [low, high)
-            samples[i, d] = int(np.random.uniform(low, high))
+            # Random integer in [low, high), ensuring we don't exceed max_val-1
+            sample_val = int(np.random.uniform(low, high))
+            samples[i, d] = min(sample_val, max_val - 1)
 
     # Evaluate all sampled points
     for i in range(n_samples):
