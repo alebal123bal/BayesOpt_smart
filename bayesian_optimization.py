@@ -37,10 +37,6 @@ else:
     print("🚀 PRODUCTION MODE - Numba enabled")
     from numba import njit, prange
 
-X_MAX = 300
-Y_MAX = 300
-Z_MAX = 300
-
 
 @njit
 def toy_function(x):
@@ -661,6 +657,7 @@ def optimize(
     betas,
     length_scales,
     batch_size,
+    bounds,
 ):
     """
     Perform the Multi-Objective Bayesian optimization.
@@ -683,6 +680,7 @@ def optimize(
         betas (np.ndarray): Exploration-exploitation trade-off parameters.
         length_scales (np.ndarray): Length scale parameters for the kernel.
         batch_size (int): Number of points to evaluate in each batch.
+        bounds (list of tuples): Bounds for the optimization space [(x_min, x_max), ...].
 
     Returns:
         tuple: Updated x_vector, y_vector, and number of evaluations.
@@ -820,7 +818,7 @@ def optimize(
             heatmap_plot(
                 x_vector=x_vector[: current_eval + batch_size],
                 y_vector=y_vector[: current_eval + batch_size],
-                bounds=((0, X_MAX), (0, Y_MAX)),
+                bounds=bounds,
                 mu_objectives=mu_objectives,
                 variance_objectives=variance_objectives,
                 acquisition_values=acquisition_values,
@@ -1269,6 +1267,7 @@ class BayesianOptimization:
             betas=self.betas,
             length_scales=self.length_scales,
             batch_size=self.batch_size,
+            bounds=self.bounds,
         )
 
     def pareto_analysis(self):
@@ -1295,6 +1294,10 @@ class BayesianOptimization:
 
 
 if __name__ == "__main__":
+    X_MAX = 300
+    Y_MAX = 300
+    Z_MAX = 300
+
     # Example usage
     _bounds = [
         (0, X_MAX),
