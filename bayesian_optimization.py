@@ -37,9 +37,9 @@ else:
     print("🚀 PRODUCTION MODE - Numba enabled")
     from numba import njit, prange
 
-X_MAX = 30
-Y_MAX = 30
-Z_MAX = 30
+X_MAX = 300
+Y_MAX = 300
+Z_MAX = 300
 
 
 @njit
@@ -348,8 +348,8 @@ def update_k_parallel(
 @njit
 def invert_k(current_eval, kernel_matrix):
     """
-    Invert the kernel matrix for each objective using Cholesky decomposition.
-    Numba-compatible implementation without try-except blocks.
+    Invert the kernel matrix for each objective using direct matrix inversion.
+    Numba-compatible implementation with numerical stability via jitter.
 
     Args:
         current_eval (int): Current number of evaluations.
@@ -360,7 +360,7 @@ def invert_k(current_eval, kernel_matrix):
     """
 
     n_objectives = kernel_matrix.shape[0]
-    jitter = 1e-8
+    jitter = 1e-6  # Slightly larger jitter for stability without Cholesky
 
     # Allocate output array
     kernel_matrix_inv = np.zeros(
@@ -368,22 +368,16 @@ def invert_k(current_eval, kernel_matrix):
     )
 
     for obj_idx in range(n_objectives):
-        # Extract kernel matrix slice and add jitter
+        # Extract kernel matrix slice and add jitter for numerical stability
         K = np.zeros((current_eval, current_eval), dtype=np.float64)
         for i in range(current_eval):
             for j in range(current_eval):
                 K[i, j] = kernel_matrix[obj_idx, i, j]
-                if i == j:  # Add jitter to diagonal
+                if i == j:  # Add jitter to diagonal for numerical stability
                     K[i, j] += jitter
 
-        # Use Cholesky decomposition for inversion
-        # Check if we can use Cholesky by testing positive definiteness
-        L = np.linalg.cholesky(K)
-
-        # Compute inverse using Cholesky: K^{-1} = (L @ L.T)^{-1}
-        # More efficient: solve L @ L.T @ X = I
-        L_inv = np.linalg.inv(L)
-        kernel_matrix_inv[obj_idx] = np.dot(L_inv.T, L_inv)
+        # Direct matrix inversion
+        kernel_matrix_inv[obj_idx] = np.linalg.inv(K)
 
     return kernel_matrix_inv
 
@@ -938,15 +932,23 @@ def heatmap_plot(
     sigma_grids = [np.sqrt(var) for var in var_grids]
     acquisition_grid = acquisition_values.reshape(nx, ny).T
 
-    # Create subplots: one row per objective, three columns
+    # Create subplots with adaptive figure size
+    base_width = 7  # base width per subplot
+    base_height = 4  # base height per subplot
+    fig_width = base_width * 3  # 3 columns
+    fig_height = base_height * n_objectives
+
     fig, axs = plt.subplots(
-        n_objectives, 3, figsize=(21, 5 * n_objectives), constrained_layout=True
+        n_objectives, 3, figsize=(fig_width, fig_height), constrained_layout=True
     )
     if n_objectives == 1:
         axs = axs.reshape(1, -1)
 
+    # Add grid size info to title
     fig.suptitle(
-        "Bayesian Optimization Surrogate Model (2D)", fontsize=18, fontweight="bold"
+        f"Bayesian Optimization Surrogate Model (2D) - Grid: {nx}×{ny}",
+        fontsize=16,
+        fontweight="bold",
     )
 
     for obj_idx in range(n_objectives):
@@ -969,16 +971,33 @@ def heatmap_plot(
         )
         ax_mean.set_title(f"Objective {obj_idx}: Mean Prediction (μ)", fontsize=13)
         # Scatter evaluated points (x,y) — already in integer coordinates
+        n_eval_points = len(x_vector)
+        scatter_size = max(
+            20, min(50, 500 // max(n_eval_points, 10))
+        )  # Adaptive point size
         scatter_mean = ax_mean.scatter(
             x_vector[:, 0],
             x_vector[:, 1],
             c=y_vector[:, obj_idx],
             cmap="plasma",
-            s=50,
+            s=scatter_size,
             edgecolors="black",
             linewidth=0.7,
             label="Evaluated Points",
         )
+
+        # Add point numbers if not too many points
+        if n_eval_points <= 20:
+            for i, (x, y) in enumerate(x_vector):
+                ax_mean.annotate(
+                    str(i),
+                    (x, y),
+                    xytext=(3, 3),
+                    textcoords="offset points",
+                    fontsize=8,
+                    color="white",
+                    weight="bold",
+                )
         ax_mean.set_xlabel("x")
         ax_mean.set_ylabel("y")
         ax_mean.legend(loc="upper right", fontsize=10)
@@ -1051,12 +1070,42 @@ def heatmap_plot(
         ax_acq.grid(True, linestyle=":", alpha=0.5)
         plt.colorbar(im3, ax=ax_acq, shrink=0.8, label="Acquisition Value")
 
-        # Set ticks to integer positions
+        # Set intelligent tick spacing based on range size
+        def calculate_tick_spacing(range_size, max_ticks=10):
+            """Calculate appropriate tick spacing to avoid overcrowding."""
+            if range_size <= max_ticks:
+                return 1
+            elif range_size <= 50:
+                return 5
+            elif range_size <= 100:
+                return 10
+            elif range_size <= 200:
+                return 20
+            elif range_size <= 500:
+                return 50
+            else:
+                return 100
+
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+        x_tick_spacing = calculate_tick_spacing(x_range)
+        y_tick_spacing = calculate_tick_spacing(y_range)
+
+        # Generate tick positions
+        x_ticks = np.arange(x_min, x_max, x_tick_spacing)
+        y_ticks = np.arange(y_min, y_max, y_tick_spacing)
+
+        # Set ticks with intelligent spacing
         for ax in [ax_mean, ax_uncert, ax_acq]:
-            ax.set_xticks(range(x_min, x_max))
-            ax.set_yticks(range(y_min, y_max))
+            ax.set_xticks(x_ticks)
+            ax.set_yticks(y_ticks)
             ax.set_xlim(x_min - 0.5, x_max - 0.5)
             ax.set_ylim(y_min - 0.5, y_max - 0.5)
+            # Rotate x-axis labels if needed for better readability
+            if x_range > 50:
+                ax.tick_params(axis="x", rotation=45)
+            # Set tick label font size
+            ax.tick_params(axis="both", which="major", labelsize=8)
 
     plt.show()
 
@@ -1260,7 +1309,7 @@ if __name__ == "__main__":
         toy_function,
         _bounds,
         n_objectives=len(_bounds),
-        initial_samples=10,
+        initial_samples=(X_MAX + Y_MAX) // 10,  # 10% of grid size
         n_iterations=5,
         batch_size=3,
         betas=np.array([2.0] * len(_bounds)),
