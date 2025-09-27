@@ -613,37 +613,6 @@ def update_hypervolume_improvement(
         acquisition_values[i] = np.sum(ucb[:, i])
 
 
-def select_next_point(
-    input_space,
-    acquisition_values,
-    evaluated_points,
-    max_candidates=3,
-):
-    """
-    Select the next point to evaluate based on acquisition values.
-
-    Args:
-        input_space (np.ndarray): The input space to sample from.
-        acquisition_values (np.ndarray): The acquisition values for each point in the input space.
-        evaluated_points (np.ndarray): The points that have already been evaluated.
-        max_candidates (int): The maximum number of candidates to consider.
-
-    Returns:
-        np.ndarray: The selected point to evaluate next, or None if no valid point is found.
-    """
-
-    # Sort candidates by acquisition value
-    sorted_indices = np.argsort(acquisition_values)[::-1]  # best → worst
-
-    for idx in sorted_indices[:max_candidates]:
-        candidate = input_space[idx]
-        if not np.any(np.all(candidate == evaluated_points, axis=1)):
-            return candidate  # Found a new point
-
-    # All top candidates already evaluated
-    return None
-
-
 def select_next_batch(
     input_space,
     acquisition_values,
