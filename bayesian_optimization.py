@@ -346,39 +346,44 @@ def update_k_parallel(
 
 
 @njit
-def invert_k(current_eval, kernel_matrix, prior_variance):
+def invert_k(current_eval, kernel_matrix):
     """
-    Invert the kernel matrix for each objective.
+    Invert the kernel matrix for each objective using Cholesky decomposition.
+    Numba-compatible implementation without try-except blocks.
 
     Args:
         current_eval (int): Current number of evaluations.
         kernel_matrix (np.ndarray): Kernel matrix for the training points.
-        prior_variance (np.ndarray): Prior variance for each objective.
 
     Returns:
         np.ndarray: Inverted kernel matrix for each objective.
     """
 
     n_objectives = kernel_matrix.shape[0]
+    jitter = 1e-8
 
-    # Allocate a contiguous array for the inverted kernel matrix
+    # Allocate output array
     kernel_matrix_inv = np.zeros(
         (n_objectives, current_eval, current_eval), dtype=np.float64
     )
 
     for obj_idx in range(n_objectives):
-        # Each objective has different length_scales, so kernel matrices are fundamentally different
-        # Cannot reuse inversion computation - must invert each objective's kernel matrix separately
-        base_matrix = np.ascontiguousarray(
-            kernel_matrix[obj_idx, :current_eval, :current_eval]
-        )
+        # Extract kernel matrix slice and add jitter
+        K = np.zeros((current_eval, current_eval), dtype=np.float64)
+        for i in range(current_eval):
+            for j in range(current_eval):
+                K[i, j] = kernel_matrix[obj_idx, i, j]
+                if i == j:  # Add jitter to diagonal
+                    K[i, j] += jitter
 
-        # Add jitter for numerical stability
-        jitter = 1e-8
-        base_matrix += jitter * np.eye(base_matrix.shape[0])
+        # Use Cholesky decomposition for inversion
+        # Check if we can use Cholesky by testing positive definiteness
+        L = np.linalg.cholesky(K)
 
-        # Compute the inverse for this specific objective
-        kernel_matrix_inv[obj_idx] = np.ascontiguousarray(np.linalg.inv(base_matrix))
+        # Compute inverse using Cholesky: K^{-1} = (L @ L.T)^{-1}
+        # More efficient: solve L @ L.T @ X = I
+        L_inv = np.linalg.inv(L)
+        kernel_matrix_inv[obj_idx] = np.dot(L_inv.T, L_inv)
 
     return kernel_matrix_inv
 
@@ -773,7 +778,6 @@ def optimize(
         kernel_matrix_inv = invert_k(
             current_eval=current_eval,
             kernel_matrix=kernel_matrices,
-            prior_variance=prior_variance,
         )
 
         # Update k star for each objective
