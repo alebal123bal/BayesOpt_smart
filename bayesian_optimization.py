@@ -53,9 +53,9 @@ def toy_function(x):
     Returns:
         np.ndarray: Output array containing [f(x), g(x), h(x)].
     """
-    f_x = -((x[0] - 12) ** 2) + 100
-    g_x = -((x[1] - 20) ** 2) + 20
-    # h_x = -((x[2] - 5) ** 2) + 120
+    f_x = -((x[0] - 150) ** 2) / 100 + 100
+    g_x = -((x[1] - 150) ** 2) / 100 + 20
+    # h_x = -((x[2] - 5)) + 120
 
     return np.array(
         [
@@ -1309,9 +1309,9 @@ if __name__ == "__main__":
         toy_function,
         _bounds,
         n_objectives=len(_bounds),
-        initial_samples=(X_MAX + Y_MAX) // 10,  # 10% of grid size
+        initial_samples=(X_MAX + Y_MAX) // 40,  # 2.5% of grid size
         n_iterations=5,
-        batch_size=3,
+        batch_size=X_MAX // 40,  # 2.5% of grid size
         betas=np.array([2.0] * len(_bounds)),
     )
 
