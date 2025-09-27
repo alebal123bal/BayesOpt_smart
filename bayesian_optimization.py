@@ -366,23 +366,19 @@ def invert_k(current_eval, kernel_matrix, prior_variance):
         (n_objectives, current_eval, current_eval), dtype=np.float64
     )
 
-    # Extract and ensure contiguous memory layout
-    base_matrix = np.ascontiguousarray(
-        kernel_matrix[0, :current_eval, :current_eval] / prior_variance[0]
-    )
-
-    # Add jitter for numerical stability
-    jitter = 1e-8
-    base_matrix += jitter * np.eye(base_matrix.shape[0])
-
-    # Compute the inverse once
-    base_matrix_inv = np.ascontiguousarray(np.linalg.inv(base_matrix))
-
     for obj_idx in range(n_objectives):
-        # Scale with prior variance
-        kernel_matrix_inv[obj_idx] = np.ascontiguousarray(
-            base_matrix_inv / prior_variance[obj_idx]
+        # Each objective has different length_scales, so kernel matrices are fundamentally different
+        # Cannot reuse inversion computation - must invert each objective's kernel matrix separately
+        base_matrix = np.ascontiguousarray(
+            kernel_matrix[obj_idx, :current_eval, :current_eval]
         )
+
+        # Add jitter for numerical stability
+        jitter = 1e-8
+        base_matrix += jitter * np.eye(base_matrix.shape[0])
+
+        # Compute the inverse for this specific objective
+        kernel_matrix_inv[obj_idx] = np.ascontiguousarray(np.linalg.inv(base_matrix))
 
     return kernel_matrix_inv
 
