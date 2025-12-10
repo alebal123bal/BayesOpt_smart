@@ -658,6 +658,7 @@ def optimize(
     length_scales,
     batch_size,
     bounds,
+    plot,
 ):
     """
     Perform the Multi-Objective Bayesian optimization.
@@ -681,6 +682,7 @@ def optimize(
         length_scales (np.ndarray): Length scale parameters for the kernel.
         batch_size (int): Number of points to evaluate in each batch.
         bounds (list of tuples): Bounds for the optimization space [(x_min, x_max), ...].
+        plot (bool): Flag to enable/disable plotting.
 
     Returns:
         tuple: Updated x_vector, y_vector, and number of evaluations.
@@ -815,15 +817,16 @@ def optimize(
 
         # Plot
         if x_vector.shape[1] == 2:
-            heatmap_plot(
-                x_vector=x_vector[: current_eval + batch_size],
-                y_vector=y_vector[: current_eval + batch_size],
-                bounds=bounds,
-                mu_objectives=mu_objectives,
-                variance_objectives=variance_objectives,
-                acquisition_values=acquisition_values,
-                x_next=x_next,
-            )
+            if plot:
+                heatmap_plot(
+                    x_vector=x_vector[: current_eval + batch_size],
+                    y_vector=y_vector[: current_eval + batch_size],
+                    bounds=bounds,
+                    mu_objectives=mu_objectives,
+                    variance_objectives=variance_objectives,
+                    acquisition_values=acquisition_values,
+                    x_next=x_next,
+                )
 
         # Evaluate the function at the new points
         for b_idx, point in enumerate(x_next):
@@ -1239,6 +1242,9 @@ class BayesianOptimization:
         # Reference point for hypervolume (should be worse than any expected objective value)
         self.reference_point = np.array([0.0] * n_objectives)
 
+        # Plot flag
+        self.plot = kwargs.get("plot", True)
+
     def optimize(self):
         """
         Perform the Multi-Objective Bayesian optimization.
@@ -1268,6 +1274,7 @@ class BayesianOptimization:
             length_scales=self.length_scales,
             batch_size=self.batch_size,
             bounds=self.bounds,
+            plot=self.plot,
         )
 
     def pareto_analysis(self):
@@ -1316,6 +1323,7 @@ if __name__ == "__main__":
         n_iterations=5,
         batch_size=X_MAX // 40,  # 2.5% of grid size
         betas=np.array([2.0] * len(_bounds)),
+        plot=False,
     )
 
     optimizer.optimize()
