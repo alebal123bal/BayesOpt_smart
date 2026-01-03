@@ -259,18 +259,16 @@ class HeatmapPlotterDaemon:
     without blocking the main optimization loop.
     """
 
-    def __init__(self, bounds, n_objectives, update_interval_ms=100):
+    def __init__(self, bounds, n_objectives):
         """
         Initialize the interactive heatmap plotter.
 
         Args:
             bounds (list of tuples): [(x_min, x_max), (y_min, y_max)] -- exclusive upper bound
             n_objectives (int): Number of objectives
-            update_interval_ms (int): Update interval in milliseconds
         """
         self.bounds = bounds
         self.n_objectives = n_objectives
-        self.update_interval_ms = update_interval_ms
 
         # Data storage
         self.x_vector = None
@@ -294,8 +292,9 @@ class HeatmapPlotterDaemon:
         # Enable interactive mode
         plt.ion()
 
-        # Create figure and axes
-        self._create_figure()
+        # Figure will be created on first plot() call
+        self.fig = None
+        self.axs = None
 
         # Flag to track if data has been updated
         self.data_updated = False
@@ -374,6 +373,10 @@ class HeatmapPlotterDaemon:
         """Redraw the plots with current data."""
         if not self.data_updated:
             return
+
+        # Create figure on first call
+        if self.fig is None:
+            self._create_figure()
 
         # Clear the entire figure
         self.fig.clf()

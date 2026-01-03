@@ -1107,6 +1107,12 @@ if __name__ == "__main__":
         # (0, Z_MAX),
     ]
 
+    # Initialize Dynamic Plotter (Daemon)
+    dynamic_plotter = HeatmapPlotterDaemon(
+        bounds=_bounds,
+        n_objectives=len(_bounds),
+    )
+
     start_time = time.time()
     print("\n⚡ Starting optimization...\n")
 
@@ -1114,11 +1120,12 @@ if __name__ == "__main__":
         toy_function,
         _bounds,
         n_objectives=len(_bounds),
-        initial_samples=(X_MAX + Y_MAX) // 40,  # 2.5% of grid size
+        initial_samples=(X_MAX + Y_MAX) // 100,  # 1% of grid size
         n_iterations=15,
         batch_size=X_MAX // 100,  # 1% of grid size
         betas=np.array([2.0] * len(_bounds)),
         plot=True,
+        plotter=dynamic_plotter,
     )
 
     optimizer.optimize()
