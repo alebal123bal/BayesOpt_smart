@@ -2,9 +2,19 @@
 
 A **high-performance**, **production-ready** Multi-Objective Bayesian Optimization implementation with advanced features and comprehensive visualization capabilities.
 
+Built for Real Time.
+
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Numba Accelerated](https://img.shields.io/badge/numba-accelerated-green.svg)](https://numba.pydata.org/)
 [![Multi-Objective](https://img.shields.io/badge/optimization-multi--objective-orange.svg)]()
+
+## 🎬 Live Visualization Demo
+
+Watch the optimizer in action with real-time heatmap updates:
+
+![Bayesian Optimization Heatmap Demo](videos/heatmap_demo.gif)
+
+*The live plotter dynamically updates during optimization, showing mean predictions, uncertainty, and acquisition function in real-time.*
 
 ## ✨ Key Features
 
