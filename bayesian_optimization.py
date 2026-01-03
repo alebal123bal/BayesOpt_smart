@@ -6,7 +6,7 @@ import os
 import time
 import numpy as np
 from scipy.optimize import minimize
-from heatmap_plotter import heatmap_plot
+from heatmap_plotter import HeatmapPlotterDaemon, HeatmapPlotterStatic
 
 # Debug flag - setup from launch configuration or environment variable
 DEBUG_MODE = os.environ.get("BAYESIAN_DEBUG", "False").lower() in ("true", "1", "yes")
@@ -659,6 +659,7 @@ def optimize(
     batch_size,
     bounds,
     plot,
+    plotter_daemon=None,
 ):
     """
     Perform the Multi-Objective Bayesian optimization.
@@ -816,17 +817,15 @@ def optimize(
             print(f" - {point}")
 
         # Plot
-        if x_vector.shape[1] == 2:
-            if plot:
-                heatmap_plot(
-                    x_vector=x_vector[: current_eval + batch_size],
-                    y_vector=y_vector[: current_eval + batch_size],
-                    bounds=bounds,
-                    mu_objectives=mu_objectives,
-                    variance_objectives=variance_objectives,
-                    acquisition_values=acquisition_values,
-                    x_next=x_next,
-                )
+        if x_vector.shape[1] == 2 and plot and plotter_daemon is not None:
+            plotter_daemon.plot(
+                x_vector=x_vector[:current_eval],
+                y_vector=y_vector[:current_eval],
+                mu_objectives=mu_objectives,
+                variance_objectives=variance_objectives,
+                acquisition_values=acquisition_values,
+                x_next=x_next,
+            )
 
         # Evaluate the function at the new points
         for b_idx, point in enumerate(x_next):
@@ -905,12 +904,19 @@ class BayesianOptimization:
             bounds (tuple): The bounds for the input variable (min, max).
             n_objectives (int): Number of objectives.
             n_iterations (int): The number of iterations for the optimization.
+            **kwargs: Additional parameters including:
+                - plotter: Optional plotter instance (HeatmapPlotterDaemon or HeatmapPlotterStatic).
+                           If None and plot=True, defaults to HeatmapPlotterStatic.
+                - plot (bool): Enable/disable plotting. Default: True.
         """
 
         self.function = function
         self.bounds = bounds
         self.n_objectives = n_objectives
         self.n_iterations = n_iterations
+
+        # Get plotter from kwargs or use default
+        self.plotter = kwargs.get("plotter", None)
 
         # If prior mean and variance are not provided, calculate them later from initial samples
         self.prior_mean = np.array(
@@ -1023,6 +1029,21 @@ class BayesianOptimization:
         Perform the Multi-Objective Bayesian optimization.
         """
 
+        # Initialize plotter if needed and 2D
+        if self.plot and self.dim == 2:
+            if self.plotter is None:
+                # Create default static plotter
+                print(
+                    "📊 Initializing static plot window (press 'Q' to close each plot)..."
+                )
+                self.plotter = HeatmapPlotterStatic(
+                    bounds=self.bounds,
+                    n_objectives=self.n_objectives,
+                )
+            else:
+                # User provided custom plotter
+                print("📊 Using custom plotter...")
+
         # Optimize with numba
         self.x_vector, self.y_vector, self.n_evaluations = optimize(
             x_vector=self.x_vector,
@@ -1048,6 +1069,7 @@ class BayesianOptimization:
             batch_size=self.batch_size,
             bounds=self.bounds,
             plot=self.plot,
+            plotter_daemon=self.plotter,
         )
 
     def pareto_analysis(self):
@@ -1093,8 +1115,8 @@ if __name__ == "__main__":
         _bounds,
         n_objectives=len(_bounds),
         initial_samples=(X_MAX + Y_MAX) // 40,  # 2.5% of grid size
-        n_iterations=5,
-        batch_size=X_MAX // 40,  # 2.5% of grid size
+        n_iterations=15,
+        batch_size=X_MAX // 100,  # 1% of grid size
         betas=np.array([2.0] * len(_bounds)),
         plot=True,
     )
