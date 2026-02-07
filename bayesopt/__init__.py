@@ -60,8 +60,6 @@ try:
         PlotterStatic,
         PyQtPlotter, 
         PyQtPlotterStatic,
-        HeatmapPlotterDaemon, 
-        HeatmapPlotterStatic
     )
     __all__ = [
         # Main optimizer
@@ -71,14 +69,11 @@ try:
         "is_pareto_efficient",
         "compute_pareto_front",
         "print_pareto_analysis",
-        # Plotting (new fast PyQtGraph)
+        # Plotting (PyQtGraph)
         "Plotter",
         "PlotterStatic",
         "PyQtPlotter",
         "PyQtPlotterStatic",
-        # Plotting (legacy Matplotlib)
-        "HeatmapPlotterDaemon",
-        "HeatmapPlotterStatic",
         # Version
         "__version__",
     ]

@@ -11,12 +11,12 @@ import numpy as np
 
 # Try to import plotting modules (optional dependency)
 try:
-    from plotting import HeatmapPlotterDaemon, HeatmapPlotterStatic
+    from plotting import PyQtPlotter, PyQtPlotterStatic
     PLOTTING_AVAILABLE = True
 except ImportError:
     PLOTTING_AVAILABLE = False
-    HeatmapPlotterDaemon = None  # type: ignore
-    HeatmapPlotterStatic = None  # type: ignore
+    PyQtPlotter = None  # type: ignore
+    PyQtPlotterStatic = None  # type: ignore
 
 # Import configuration
 from .config import (
@@ -304,7 +304,7 @@ class BayesianOptimization:
             n_objectives: Number of objectives.
             n_iterations: The number of optimization iterations.
             **kwargs: Additional parameters:
-                - plotter: Optional plotter instance (HeatmapPlotterDaemon or HeatmapPlotterStatic).
+                - plotter: Optional plotter instance (PyQtPlotter or PyQtPlotterStatic).
                 - plot (bool): Enable/disable plotting. Default: from config.
                 - prior_mean (List[float]): Prior mean for each objective.
                 - prior_variance (List[float]): Prior variance for each objective.
@@ -325,7 +325,7 @@ class BayesianOptimization:
         # Check plotting availability
         if kwargs.get("plot", DEFAULT_PLOT_ENABLED) and not PLOTTING_AVAILABLE:
             print(
-                "⚠️  Warning: Plotting requested but matplotlib/heatmap_plotter not available. "
+                "⚠️  Warning: Plotting requested but PyQtGraph not available. "
                 "Continuing without plotting."
             )
 
@@ -446,12 +446,10 @@ class BayesianOptimization:
         # Initialize plotter if needed and 2D
         if self.plot and self.dim == 2:
             if self.plotter is None:
-                # Create default static plotter
-                print(
-                    "📊 Initializing static plot window (press 'Q' to close each plot)..."
-                )
-                if HeatmapPlotterStatic is not None:
-                    self.plotter = HeatmapPlotterStatic(
+                # Create default PyQtGraph plotter
+                print("📊 Initializing PyQtGraph plotter...")
+                if PyQtPlotter is not None:
+                    self.plotter = PyQtPlotter(
                         bounds=self.bounds,
                         n_objectives=self.n_objectives,
                     )

@@ -29,11 +29,11 @@ A **high-performance**, **production-ready** Multi-Objective Bayesian Optimizati
 - NumPy >= 1.19.0
 - SciPy >= 1.6.0
 - Numba >= 0.53.0 (for performance acceleration)
-- Matplotlib >= 3.3.0 (for visualization)
+- PyQtGraph >= 0.12.0 (for visualization)
 
 ### Quick Install
 ```bash
-pip install numpy scipy numba matplotlib
+pip install numpy scipy numba pyqtgraph
 ```
 
 ## 🚀 Quick Start
