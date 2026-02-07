@@ -79,36 +79,6 @@ def toy_function_3d(x: np.ndarray) -> np.ndarray:
 
 
 @njit
-def branin(x: np.ndarray) -> np.ndarray:
-    """
-    Branin function (single objective).
-
-    Global minimum at approximately: (-π, 12.275), (π, 2.275), (9.42478, 2.475)
-    with f(x) ≈ 0.397887
-
-    Args:
-        x: Input array [x1, x2] where x1 ∈ [-5, 10] and x2 ∈ [0, 15].
-
-    Returns:
-        Single-objective value (negated for maximization).
-    """
-    x1, x2 = x[0], x[1]
-    a = 1.0
-    b = 5.1 / (4.0 * np.pi**2)
-    c = 5.0 / np.pi
-    r = 6.0
-    s = 10.0
-    t = 1.0 / (8.0 * np.pi)
-
-    term1 = a * (x2 - b * x1**2 + c * x1 - r) ** 2
-    term2 = s * (1 - t) * np.cos(x1)
-    term3 = s
-
-    # Negate for maximization (original is minimization)
-    return np.array([-1.0 * (term1 + term2 + term3)])
-
-
-@njit
 def sphere(x: np.ndarray) -> np.ndarray:
     """
     Sphere function (single objective).
