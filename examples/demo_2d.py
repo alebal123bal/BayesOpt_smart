@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
 from bayesopt import BayesianOptimization
-from examples.benchmark_functions import toy_function
+from examples.benchmark_functions import toy_function, sphere
 from plotting import HeatmapPlotterDaemon
 
 
@@ -40,7 +40,7 @@ def main():
 
     # Create optimizer
     optimizer = BayesianOptimization(
-        toy_function,
+        sphere,
         bounds,
         n_objectives=len(bounds),
         initial_samples=(X_MAX + Y_MAX) // 100,  # 1% of grid size
