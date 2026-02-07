@@ -47,11 +47,11 @@ from .numba_kernels import (
 from .acquisition import (
     update_ucb,
     update_hypervolume_improvement,
+    select_next_batch,
 )
 
 # Import utility functions
-from .utils import (
-    select_next_batch,
+from .pareto import (
     compute_pareto_front,
     print_pareto_analysis,
 )

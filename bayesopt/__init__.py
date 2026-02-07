@@ -32,11 +32,13 @@ __author__ = "BayesOpt_smart Team"
 from .bayesian_optimization import BayesianOptimization
 
 # Utility functions
-from .utils import (
-    select_next_batch,
+from .pareto import (
     is_pareto_efficient,
     compute_pareto_front,
     print_pareto_analysis,
+)
+from .acquisition import (
+    select_next_batch,
 )
 
 # Configuration

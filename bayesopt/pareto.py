@@ -1,43 +1,12 @@
 """
-Utility functions for Bayesian Optimization.
+Pareto analysis utilities for Bayesian Optimization.
 
-This module contains helper functions for batch selection,
-Pareto analysis, and other algorithmic utilities.
+This module contains functions for computing and analyzing
+Pareto-efficient solutions in multi-objective optimization.
 """
 
 from typing import Tuple
 import numpy as np
-
-
-def select_next_batch(
-    input_space: np.ndarray,
-    acquisition_values: np.ndarray,
-    evaluated_points: np.ndarray,
-    batch_size: int = 3,
-) -> np.ndarray:
-    """
-    Select a batch of points to evaluate based on acquisition values.
-
-    Args:
-        input_space: All candidate input points (n_candidates, n_dimensions).
-        acquisition_values: Acquisition values for each candidate (n_candidates,).
-        evaluated_points: Points already evaluated (n_evaluated, n_dimensions).
-        batch_size: Number of points to select.
-
-    Returns:
-        Array of shape (batch_size, n_dimensions) with new points to evaluate.
-    """
-    sorted_indices = np.argsort(acquisition_values)[::-1]  # best → worst
-    batch = []
-
-    for idx in sorted_indices:
-        candidate = input_space[idx]
-        if not np.any(np.all(candidate == evaluated_points, axis=1)):
-            batch.append(candidate)
-            if len(batch) == batch_size:
-                break
-
-    return np.array(batch)
 
 
 def is_pareto_efficient(y_vector: np.ndarray) -> np.ndarray:
