@@ -2,23 +2,55 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug BayesMOO",
+            "name": "Run 2D Demo",
             "type": "debugpy",
             "request": "launch",
-            "module": "bayesian_optimization",
+            "program": "${workspaceFolder}/examples/demo_2d.py",
             "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug 2D Demo (Numba Disabled)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/examples/demo_2d.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
             "env": {
-                "BAYESIAN_DEBUG": "true"
+                "BAYESIAN_DEBUG": "True"
             }
         },
         {
-            "name": "Run BayesMOO",
+            "name": "Run Current File",
             "type": "debugpy",
             "request": "launch",
-            "module": "bayesian_optimization",
+            "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "stopOnEntry": false
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug Current File (Numba Disabled)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "BAYESIAN_DEBUG": "True"
+            }
+        },
+        {
+            "name": "Python: Module",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "examples.demo_2d",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
