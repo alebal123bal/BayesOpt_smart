@@ -8,6 +8,7 @@ their role in the Bayesian optimization pipeline.
 
 import os
 import numpy as np
+from scipy.optimize import minimize
 
 # Debug flag - setup from launch configuration or environment variable
 DEBUG_MODE = os.environ.get("BAYESIAN_DEBUG", "False").lower() in ("true", "1", "yes")
@@ -165,7 +166,7 @@ def compute_prior_variance(y_vector, n_evaluations, n_objectives):
 
 
 # =============================================================================
-# MARGINAL LOG LIKELIHOOD
+# MARGINAL LOG LIKELIHOOD & HYPERPARAMETER OPTIMIZATION
 # =============================================================================
 
 
@@ -245,6 +246,78 @@ def compute_marginal_log_likelihood_parallel(
 
     # Sum outside the parallel loop
     return np.sum(mll_values)
+
+
+def optimize_hyperparams_mll(
+    x_vector,
+    y_vector,
+    kernel_matrix,
+    prior_mean,
+    prior_variance,
+    length_scales,
+    current_eval,
+):
+    """
+    Optimize GP hyperparameters (length_scales, prior_variance) by maximizing
+    the marginal log-likelihood (MLL). Uses a derivative-free method (Powell).
+
+    Updates `length_scales` and `prior_variance` IN PLACE.
+
+    Args:
+        x_vector (np.ndarray): (n_eval, n_features) training inputs.
+        y_vector (np.ndarray): (n_eval, n_objectives) training targets.
+        kernel_matrix (np.ndarray): (n_objectives, n_eval, n_eval) preallocated kernel buffer.
+        prior_mean (np.ndarray): (n_objectives,) prior means (unchanged).
+        prior_variance (np.ndarray): (n_objectives,) prior variances (updated in place).
+        length_scales (np.ndarray): (n_objectives,) length scales (updated in place).
+        current_eval (int): Number of evaluated points to consider.
+
+    Returns:
+        res (OptimizeResult): Result object from scipy.optimize.minimize.
+    """
+    n_objectives = y_vector.shape[1]
+
+    # Initial guess: concatenate length scales and variances
+    initial_guess = np.concatenate([length_scales, prior_variance])
+
+    # Bounds: enforce positivity
+    bounds = [(1e-5, None)] * (2 * n_objectives)
+
+    # Objective function: negative MLL (since minimize() is used)
+    def objective(params):
+        ls = params[:n_objectives]
+        var = params[n_objectives:]
+
+        mll = compute_marginal_log_likelihood_parallel(
+            x_vector=x_vector,
+            y_vector=y_vector,
+            kernel_matrix=kernel_matrix,
+            prior_mean=prior_mean,
+            prior_variance=var,
+            length_scales=ls,
+            current_eval=current_eval,
+        )
+
+        return -mll
+
+    # Run Powell optimization (derivative-free)
+    optim_result = minimize(
+        objective,
+        initial_guess,
+        method="Powell",
+        bounds=bounds,
+        options={
+            "xtol": 1e-3,  # stop tolerance for parameters
+            "ftol": 1e-4,  # stop tolerance for function value
+            "maxiter": 1000,  # safeguard against long runs
+        },
+    )
+
+    # Update hyperparameters in place
+    length_scales[:] = optim_result.x[:n_objectives]
+    prior_variance[:] = optim_result.x[n_objectives:]
+
+    return optim_result
 
 
 # =============================================================================

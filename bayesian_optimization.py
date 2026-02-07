@@ -4,16 +4,15 @@ Multi-Objective Bayesian optimization optimized class.
 
 import time
 import numpy as np
-from scipy.optimize import minimize
 from heatmap_plotter import HeatmapPlotterDaemon, HeatmapPlotterStatic
 
-# Import all numba-accelerated kernel functions
+# Import all numba-accelerated kernel functions and GP utilities
 from numba_kernels import (
     toy_function,
     initialize_lhs_integer,
     compute_prior_mean,
     compute_prior_variance,
-    compute_marginal_log_likelihood_parallel,
+    optimize_hyperparams_mll,
     update_k_parallel,
     invert_k,
     update_k_star_parallel,
@@ -25,78 +24,6 @@ from numba_kernels import (
 )
 
 np.random.seed(42)
-
-
-def optimize_hyperparams_mll(
-    x_vector,
-    y_vector,
-    kernel_matrix,
-    prior_mean,
-    prior_variance,
-    length_scales,
-    current_eval,
-):
-    """
-    Optimize GP hyperparameters (length_scales, prior_variance) by maximizing
-    the marginal log-likelihood (MLL). Uses a derivative-free method (Powell).
-
-    Updates `length_scales` and `prior_variance` IN PLACE.
-
-    Args:
-        x_vector (np.ndarray): (n_eval, n_features) training inputs.
-        y_vector (np.ndarray): (n_eval, n_objectives) training targets.
-        kernel_matrix (np.ndarray): (n_objectives, n_eval, n_eval) preallocated kernel buffer.
-        prior_mean (np.ndarray): (n_objectives,) prior means (unchanged).
-        prior_variance (np.ndarray): (n_objectives,) prior variances (updated in place).
-        length_scales (np.ndarray): (n_objectives,) length scales (updated in place).
-        current_eval (int): Number of evaluated points to consider.
-
-    Returns:
-        res (OptimizeResult): Result object from scipy.optimize.minimize.
-    """
-    n_objectives = y_vector.shape[1]
-
-    # Initial guess: concatenate length scales and variances
-    initial_guess = np.concatenate([length_scales, prior_variance])
-
-    # Bounds: enforce positivity
-    bounds = [(1e-5, None)] * (2 * n_objectives)
-
-    # Objective function: negative MLL (since minimize() is used)
-    def objective(params):
-        ls = params[:n_objectives]
-        var = params[n_objectives:]
-
-        mll = compute_marginal_log_likelihood_parallel(
-            x_vector=x_vector,
-            y_vector=y_vector,
-            kernel_matrix=kernel_matrix,
-            prior_mean=prior_mean,
-            prior_variance=var,
-            length_scales=ls,
-            current_eval=current_eval,
-        )
-
-        return -mll
-
-    # Run Powell optimization (derivative-free)
-    optim_result = minimize(
-        objective,
-        initial_guess,
-        method="Powell",
-        bounds=bounds,
-        options={
-            "xtol": 1e-3,  # stop tolerance for parameters
-            "ftol": 1e-4,  # stop tolerance for function value
-            "maxiter": 1000,  # safeguard against long runs
-        },
-    )
-
-    # Update hyperparameters in place
-    length_scales[:] = optim_result.x[:n_objectives]
-    prior_variance[:] = optim_result.x[n_objectives:]
-
-    return optim_result
 
 
 def select_next_batch(
