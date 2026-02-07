@@ -11,7 +11,7 @@ import numpy as np
 
 # Try to import plotting modules (optional dependency)
 try:
-    from heatmap_plotter import HeatmapPlotterDaemon, HeatmapPlotterStatic
+    from plotting import HeatmapPlotterDaemon, HeatmapPlotterStatic
     PLOTTING_AVAILABLE = True
 except ImportError:
     PLOTTING_AVAILABLE = False

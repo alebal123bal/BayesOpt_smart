@@ -53,7 +53,7 @@ from .config import (
 
 # Optional: Export plotting classes if available
 try:
-    from heatmap_plotter import HeatmapPlotterDaemon, HeatmapPlotterStatic
+    from plotting import HeatmapPlotterDaemon, HeatmapPlotterStatic
     __all__ = [
         # Main optimizer
         "BayesianOptimization",

@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import numpy as np
 from bayesopt import BayesianOptimization
 from examples.benchmark_functions import toy_function
-from heatmap_plotter import HeatmapPlotterDaemon
+from plotting import HeatmapPlotterDaemon
 
 
 def main():
