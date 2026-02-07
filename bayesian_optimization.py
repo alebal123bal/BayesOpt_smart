@@ -13,11 +13,11 @@ from numba_kernels import (
     compute_prior_mean,
     compute_prior_variance,
     optimize_hyperparams_mll,
-    update_k_parallel,
+    update_k,
     invert_k,
-    update_k_star_parallel,
-    update_mean_parallel,
-    update_variance_parallel,
+    update_k_star,
+    update_mean,
+    update_variance,
     standardize_objectives,
     update_ucb,
     update_hypervolume_improvement,
@@ -80,7 +80,7 @@ def optimize(
     betas,
     length_scales,
     batch_size,
-    bounds,
+    bounds, # pylint: disable=unused-argument
     plot,
     plotter_daemon=None,
 ):
@@ -152,7 +152,7 @@ def optimize(
         )
 
         # Update kernel matrices for each objective
-        update_k_parallel(
+        update_k(
             kernel_matrix=kernel_matrices,
             x_vector=x_vector,
             last_eval=0,  # Unfortunately, we need to recompute the full kernel matrix
@@ -168,7 +168,7 @@ def optimize(
         )
 
         # Update k star for each objective
-        update_k_star_parallel(
+        update_k_star(
             k_star=k_star,
             x_vector=x_vector,
             input_space=input_space,
@@ -182,7 +182,7 @@ def optimize(
         t2 = time.perf_counter()
 
         # Update mean predictions for each objective
-        update_mean_parallel(
+        update_mean(
             mu_objectives=mu_objectives,
             k_star=k_star,
             inverted_kernel_matrix=kernel_matrix_inv,
@@ -192,7 +192,7 @@ def optimize(
         )
 
         # Update variance predictions for each objective
-        update_variance_parallel(
+        update_variance(
             variance_objectives=variance_objectives,
             k_star=k_star,
             inverted_kernel_matrix=kernel_matrix_inv,
@@ -547,7 +547,7 @@ if __name__ == "__main__":
         n_iterations=15,
         batch_size=X_MAX // 100,  # 1% of grid size
         betas=np.array([2.0] * len(_bounds)),
-        plot=True,
+        plot=False,
         plotter=dynamic_plotter,
     )
 

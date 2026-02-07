@@ -171,7 +171,7 @@ def compute_prior_variance(y_vector, n_evaluations, n_objectives):
 
 
 @njit(parallel=True)
-def compute_marginal_log_likelihood_parallel(
+def compute_mll(
     x_vector,
     y_vector,
     kernel_matrix,
@@ -196,7 +196,7 @@ def compute_marginal_log_likelihood_parallel(
         total_mll (float): Sum of MLL over all objectives.
     """
     # Compute kernel matrix for given hyperparameters (already parallelized)
-    update_k_parallel(
+    update_k(
         kernel_matrix=kernel_matrix,
         x_vector=x_vector,
         last_eval=0,
@@ -288,7 +288,7 @@ def optimize_hyperparams_mll(
         ls = params[:n_objectives]
         var = params[n_objectives:]
 
-        mll = compute_marginal_log_likelihood_parallel(
+        mll = compute_mll(
             x_vector=x_vector,
             y_vector=y_vector,
             kernel_matrix=kernel_matrix,
@@ -326,7 +326,7 @@ def optimize_hyperparams_mll(
 
 
 @njit(parallel=True, fastmath=True)
-def update_k_parallel(
+def update_k(
     kernel_matrix,
     x_vector,
     last_eval,
@@ -404,7 +404,7 @@ def invert_k(current_eval, kernel_matrix):
 
 
 @njit(parallel=True, fastmath=True)
-def update_k_star_parallel(
+def update_k_star(
     k_star,
     x_vector,
     input_space,
@@ -448,7 +448,7 @@ def update_k_star_parallel(
 
 
 @njit
-def update_mean_parallel(
+def update_mean(
     mu_objectives,
     k_star,
     inverted_kernel_matrix,
@@ -489,7 +489,7 @@ def update_mean_parallel(
 
 
 @njit
-def update_variance_parallel(
+def update_variance(
     variance_objectives,
     k_star,
     inverted_kernel_matrix,
