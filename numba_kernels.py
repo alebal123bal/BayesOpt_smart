@@ -1,22 +1,26 @@
 """
 Numba-accelerated kernel functions for Bayesian Optimization.
 
-This module contains all computationally intensive functions that are
-accelerated using Numba's JIT compilation. Functions are organized by
-their role in the Bayesian optimization pipeline.
+This module contains Gaussian Process kernel operations and related
+computationally intensive functions accelerated using Numba's JIT compilation.
 """
 
-import os
 import numpy as np
 from scipy.optimize import minimize
+from config import (
+    DEBUG_MODE,
+    KERNEL_JITTER,
+    CHOLESKY_JITTER,
+    MIN_VARIANCE,
+    HYPERPARAM_METHOD,
+    HYPERPARAM_XTOL,
+    HYPERPARAM_FTOL,
+    HYPERPARAM_MAXITER,
+    HYPERPARAM_MIN_BOUND,
+)
 
-# Debug flag - setup from launch configuration or environment variable
-DEBUG_MODE = os.environ.get("BAYESIAN_DEBUG", "False").lower() in ("true", "1", "yes")
-
-# Conditional imports and setup
+# Conditional imports
 if DEBUG_MODE:
-    print("🐛 DEBUG MODE - Numba disabled (numba_kernels.py)")
-
     # Dummy njit decorator
     def njit(*args, **kwargs):  # pylint: disable=unused-argument
         """Dummy njit decorator for debugging."""
@@ -34,37 +38,7 @@ if DEBUG_MODE:
         return range(*args)
 
 else:
-    print("🚀 PRODUCTION MODE - Numba enabled (numba_kernels.py)")
     from numba import njit, prange
-
-
-# =============================================================================
-# TOY FUNCTION (Example objective)
-# =============================================================================
-
-
-@njit
-def toy_function(x):
-    """
-    A multi-objective toy function to optimize.
-
-    Args:
-        x (np.ndarray): Input array (e.g., [x1, x2, ..., xd]).
-
-    Returns:
-        np.ndarray: Output array containing [f(x), g(x), h(x)].
-    """
-    f_x = -((x[0] - 150) ** 2) / 100 + 100
-    g_x = -((x[1] - 150) ** 2) / 100 + 20
-    # h_x = -((x[2] - 5)) + 120
-
-    return np.array(
-        [
-            f_x,
-            g_x,
-            # h_x,
-        ]
-    )
 
 
 # =============================================================================
@@ -226,7 +200,7 @@ def compute_mll(
             y_centered /= std_y
 
         # Cholesky decomposition
-        L = np.linalg.cholesky(K + 1e-8 * np.eye(n_points))
+        L = np.linalg.cholesky(K + CHOLESKY_JITTER * np.eye(n_points))
 
         # Solve alpha = K^{-1} y_centered
         alpha = np.linalg.solve(L.T, np.linalg.solve(L, y_centered))
@@ -281,7 +255,7 @@ def optimize_hyperparams_mll(
     initial_guess = np.concatenate([length_scales, prior_variance])
 
     # Bounds: enforce positivity
-    bounds = [(1e-5, None)] * (2 * n_objectives)
+    bounds = [(HYPERPARAM_MIN_BOUND, None)] * (2 * n_objectives)
 
     # Objective function: negative MLL (since minimize() is used)
     def objective(params):
@@ -304,12 +278,12 @@ def optimize_hyperparams_mll(
     optim_result = minimize(
         objective,
         initial_guess,
-        method="Powell",
+        method=HYPERPARAM_METHOD,
         bounds=bounds,
         options={
-            "xtol": 1e-3,  # stop tolerance for parameters
-            "ftol": 1e-4,  # stop tolerance for function value
-            "maxiter": 1000,  # safeguard against long runs
+            "xtol": HYPERPARAM_XTOL,
+            "ftol": HYPERPARAM_FTOL,
+            "maxiter": HYPERPARAM_MAXITER,
         },
     )
 
@@ -381,7 +355,6 @@ def invert_k(current_eval, kernel_matrix):
     """
 
     n_objectives = kernel_matrix.shape[0]
-    jitter = 1e-6  # Slightly larger jitter for stability without Cholesky
 
     # Allocate output array
     kernel_matrix_inv = np.zeros(
@@ -395,7 +368,7 @@ def invert_k(current_eval, kernel_matrix):
             for j in range(current_eval):
                 K[i, j] = kernel_matrix[obj_idx, i, j]
                 if i == j:  # Add jitter to diagonal for numerical stability
-                    K[i, j] += jitter
+                    K[i, j] += KERNEL_JITTER
 
         # Direct matrix inversion
         kernel_matrix_inv[obj_idx] = np.linalg.inv(K)
@@ -531,7 +504,7 @@ def update_variance(
         # Compute variances
         variance = prior_variance[obj_idx] - quadratic_form
         variance_objectives[obj_idx, :] = np.maximum(
-            variance, 1e-10
+            variance, MIN_VARIANCE
         )  # Prevent negative or zero variance
 
 
@@ -568,72 +541,3 @@ def standardize_objectives(
         std_variance_objectives[obj_idx] = (
             variance_objectives[obj_idx] / prior_variance[obj_idx]
         )
-
-
-# =============================================================================
-# ACQUISITION FUNCTIONS
-# =============================================================================
-
-
-@njit
-def upper_confidence_bound(mu, variance, betas):
-    """
-    Compute the upper confidence bound for a single objective, vectorized.
-
-    Args:
-        mu (np.ndarray): Mean predictions for the objective.
-        variance (np.ndarray): Variance predictions for the objective.
-        betas (np.ndarray): Exploration-exploitation trade-off parameters for each objective.
-
-    Returns:
-        np.ndarray: Upper confidence bound values for the objective.
-    """
-
-    return mu + betas * np.sqrt(np.abs(variance))
-
-
-@njit
-def update_ucb(
-    ucb,
-    mu_objectives,
-    variance_objectives,
-    betas,
-):
-    """
-    Update the upper confidence bound acquisition function values.
-
-    Args:
-        ucb (np.ndarray): Preallocated upper confidence bound values.
-        mu_objectives (np.ndarray): Mean predictions for each objective.
-        variance_objectives (np.ndarray): Variance predictions for each objective.
-        betas (np.ndarray): Exploration-exploitation trade-off parameters for each objective.
-    """
-
-    n_objectives = mu_objectives.shape[0]
-
-    # Compute the UCB for each point vectorized
-    for obj_idx in range(n_objectives):
-        ucb[obj_idx] = upper_confidence_bound(
-            mu_objectives[obj_idx],
-            variance_objectives[obj_idx],
-            betas[obj_idx],
-        )
-
-
-@njit
-def update_hypervolume_improvement(
-    acquisition_values,
-    ucb,
-):
-    """
-    Update the hypervolume improvement acquisition function values.
-
-    Args:
-        acquisition_values (np.ndarray): Preallocated acquisition values.
-        ucb (np.ndarray): Upper confidence bound values for each point.
-    """
-    n_points = len(acquisition_values)
-
-    # Compute the hypervolume improvement acquisition function values
-    for i in range(n_points):
-        acquisition_values[i] = np.sum(ucb[:, i])

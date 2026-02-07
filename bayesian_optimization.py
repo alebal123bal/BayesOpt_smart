@@ -1,14 +1,36 @@
 """
-Multi-Objective Bayesian optimization optimized class.
+Multi-Objective Bayesian Optimization.
+
+This module contains the main BayesianOptimization class for performing
+multi-objective optimization using Gaussian Processes and acquisition functions.
 """
 
 import time
+from typing import Callable, List, Tuple, Optional, Any
 import numpy as np
-from heatmap_plotter import HeatmapPlotterDaemon, HeatmapPlotterStatic
 
-# Import all numba-accelerated kernel functions and GP utilities
+# Try to import plotting modules (optional dependency)
+try:
+    from heatmap_plotter import HeatmapPlotterDaemon, HeatmapPlotterStatic
+    PLOTTING_AVAILABLE = True
+except ImportError:
+    PLOTTING_AVAILABLE = False
+    HeatmapPlotterDaemon = None  # type: ignore
+    HeatmapPlotterStatic = None  # type: ignore
+
+# Import configuration
+from config import (
+    DEFAULT_PRIOR_MEAN,
+    DEFAULT_PRIOR_VARIANCE,
+    DEFAULT_LENGTH_SCALE,
+    DEFAULT_BETA,
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_INITIAL_SAMPLES,
+    DEFAULT_PLOT_ENABLED,
+)
+
+# Import kernel functions
 from numba_kernels import (
-    toy_function,
     initialize_lhs_integer,
     compute_prior_mean,
     compute_prior_variance,
@@ -19,71 +41,46 @@ from numba_kernels import (
     update_mean,
     update_variance,
     standardize_objectives,
+)
+
+# Import acquisition functions
+from acquisition import (
     update_ucb,
     update_hypervolume_improvement,
 )
 
-np.random.seed(42)
-
-
-def select_next_batch(
-    input_space,
-    acquisition_values,
-    evaluated_points,
-    batch_size=3,
-):
-    """
-    Select a batch of points to evaluate based on acquisition values.
-
-    Args:
-        input_space (np.ndarray): All candidate input points.
-        acquisition_values (np.ndarray): Acquisition values for each candidate.
-        evaluated_points (np.ndarray): Points already evaluated.
-        batch_size (int): Number of points to select.
-
-    Returns:
-        np.ndarray: Array of shape (batch_size, n_dimensions) with new points.
-    """
-    sorted_indices = np.argsort(acquisition_values)[::-1]  # best → worst
-    batch = []
-
-    for idx in sorted_indices:
-        candidate = input_space[idx]
-        if not np.any(np.all(candidate == evaluated_points, axis=1)):
-            batch.append(candidate)
-            if len(batch) == batch_size:
-                break
-
-    return np.array(batch)
-
-
-# @njit
+# Import utility functions
+from utils import (
+    select_next_batch,
+    compute_pareto_front,
+    print_pareto_analysis,
+)
 def optimize(
-    x_vector,
-    y_vector,
-    kernel_matrices,
-    k_star,
-    mu_objectives,
-    variance_objectives,
-    std_mu_objectives,
-    std_variance_objectives,
-    ucb,
-    acquisition_values,
-    input_space,
-    prior_mean,
-    prior_variance,
-    reference_point,  # pylint: disable=unused-argument
-    n_evaluations,
-    total_samples,
-    n_objectives,  # pylint: disable=unused-argument
-    function,
-    betas,
-    length_scales,
-    batch_size,
-    bounds, # pylint: disable=unused-argument
-    plot,
-    plotter_daemon=None,
-):
+    x_vector: np.ndarray,
+    y_vector: np.ndarray,
+    kernel_matrices: np.ndarray,
+    k_star: np.ndarray,
+    mu_objectives: np.ndarray,
+    variance_objectives: np.ndarray,
+    std_mu_objectives: np.ndarray,
+    std_variance_objectives: np.ndarray,
+    ucb: np.ndarray,
+    acquisition_values: np.ndarray,
+    input_space: np.ndarray,
+    prior_mean: np.ndarray,
+    prior_variance: np.ndarray,
+    reference_point: np.ndarray,  # pylint: disable=unused-argument
+    n_evaluations: int,
+    total_samples: int,
+    n_objectives: int,  # pylint: disable=unused-argument
+    function: Callable[[np.ndarray], np.ndarray],
+    betas: np.ndarray,
+    length_scales: np.ndarray,
+    batch_size: int,
+    bounds: List[Tuple[int, int]],  # pylint: disable=unused-argument
+    plot: bool,
+    plotter_daemon: Optional[Any] = None,
+) -> Tuple[np.ndarray, np.ndarray, int]:
     """
     Perform the Multi-Objective Bayesian optimization.
 
@@ -109,7 +106,7 @@ def optimize(
         plot (bool): Flag to enable/disable plotting.
 
     Returns:
-        tuple: Updated x_vector, y_vector, and number of evaluations.
+        Tuple of (x_vector, y_vector, n_evaluations) after optimization.
     """
 
     print(f"🚀 Starting optimization with {n_evaluations} initial evaluations.")
@@ -279,58 +276,42 @@ def optimize(
     return x_vector, y_vector, last_eval + 1
 
 
-def is_pareto_efficient(y_vector):
-    """
-    Find the Pareto-efficient points from the evaluations.
-    """
-
-    # Invert the y_vector to find the Pareto-efficient points
-    y_vector_neg = -y_vector
-
-    is_efficient = np.ones(y_vector_neg.shape[0], dtype=bool)
-
-    for i in range(y_vector_neg.shape[0]):
-        if not is_efficient[i]:
-            continue
-        for j in range(i + 1, y_vector_neg.shape[0]):
-            if np.all(y_vector_neg[j] <= y_vector_neg[i]) and np.any(
-                y_vector_neg[j] < y_vector_neg[i]
-            ):
-                is_efficient[i] = False
-                break
-            if np.all(y_vector_neg[i] <= y_vector_neg[j]) and np.any(
-                y_vector_neg[i] < y_vector_neg[j]
-            ):
-                is_efficient[j] = False
-
-    return is_efficient
-
-
 class BayesianOptimization:
     """
-    A class for Multi-Objective Bayesian optimization.
+    Multi-Objective Bayesian Optimization using Gaussian Processes.
+
+    This class implements a Bayesian optimization algorithm for multi-objective
+    problems using Gaussian Process surrogates and Upper Confidence Bound
+    acquisition functions.
     """
 
     def __init__(
         self,
-        function,
-        bounds,
-        n_objectives=3,
-        n_iterations=10,
-        **kwargs,
+        function: Callable[[np.ndarray], np.ndarray],
+        bounds: List[Tuple[int, int]],
+        n_objectives: int = 3,
+        n_iterations: int = 10,
+        **kwargs: Any,
     ):
         """
         Initialize the Multi-Objective Bayesian optimization class.
 
         Args:
-            function (callable): The function to optimize (returns array of objectives).
-            bounds (tuple): The bounds for the input variable (min, max).
-            n_objectives (int): Number of objectives.
-            n_iterations (int): The number of iterations for the optimization.
-            **kwargs: Additional parameters including:
+            function: The objective function to optimize, taking a 1D array
+                     and returning an array of objective values.
+            bounds: The bounds for each input dimension [(min, max), ...].
+                   Upper bound is exclusive (e.g., (0, 30) means 0-29 inclusive).
+            n_objectives: Number of objectives.
+            n_iterations: The number of optimization iterations.
+            **kwargs: Additional parameters:
                 - plotter: Optional plotter instance (HeatmapPlotterDaemon or HeatmapPlotterStatic).
-                           If None and plot=True, defaults to HeatmapPlotterStatic.
-                - plot (bool): Enable/disable plotting. Default: True.
+                - plot (bool): Enable/disable plotting. Default: from config.
+                - prior_mean (List[float]): Prior mean for each objective.
+                - prior_variance (List[float]): Prior variance for each objective.
+                - length_scales (List[float]): Length scales for each objective.
+                - betas (List[float]): Exploration-exploitation parameters.
+                - batch_size (int): Number of points to evaluate per iteration.
+                - initial_samples (int): Number of initial LHS samples.
         """
 
         self.function = function
@@ -341,29 +322,36 @@ class BayesianOptimization:
         # Get plotter from kwargs or use default
         self.plotter = kwargs.get("plotter", None)
 
+        # Check plotting availability
+        if kwargs.get("plot", DEFAULT_PLOT_ENABLED) and not PLOTTING_AVAILABLE:
+            print(
+                "⚠️  Warning: Plotting requested but matplotlib/heatmap_plotter not available. "
+                "Continuing without plotting."
+            )
+
         # If prior mean and variance are not provided, calculate them later from initial samples
         self.prior_mean = np.array(
-            kwargs.get("prior_mean", [0.0] * n_objectives),
+            kwargs.get("prior_mean", [DEFAULT_PRIOR_MEAN] * n_objectives),
         )
         self.prior_variance = np.array(
-            kwargs.get("prior_variance", [1.0] * n_objectives),
+            kwargs.get("prior_variance", [DEFAULT_PRIOR_VARIANCE] * n_objectives),
         )
 
-        # If length_scales is not provided, set it to 1.0
+        # If length_scales is not provided, set defaults
         self.length_scales = np.array(
-            kwargs.get("length_scales", [1.0] * n_objectives),
+            kwargs.get("length_scales", [DEFAULT_LENGTH_SCALE] * n_objectives),
         )
 
-        # If betas is not provided, set it to 1.0
+        # If betas is not provided, set defaults
         self.betas = np.array(
-            kwargs.get("betas", [1.0] * n_objectives),
+            kwargs.get("betas", [DEFAULT_BETA] * n_objectives),
         )
 
-        # If batch_size is not provided, set it to 3
-        self.batch_size = kwargs.get("batch_size", 3)
+        # If batch_size is not provided, set default
+        self.batch_size = kwargs.get("batch_size", DEFAULT_BATCH_SIZE)
 
         # Initial number of samples to evaluate
-        self.initial_samples = kwargs.get("initial_samples", 3)
+        self.initial_samples = kwargs.get("initial_samples", DEFAULT_INITIAL_SAMPLES)
 
         # Dimensionality of the input space
         self.dim = len(bounds)
@@ -430,13 +418,13 @@ class BayesianOptimization:
         )
 
         # If prior mean is not provided, calculate it from initial samples
-        if np.all(self.prior_mean == 0.0):
+        if np.all(self.prior_mean == DEFAULT_PRIOR_MEAN):
             self.prior_mean = compute_prior_mean(
                 self.y_vector, self.n_evaluations, n_objectives
             )
 
         # If prior variance is not provided, calculate it from initial samples
-        if np.all(self.prior_variance == 1.0):
+        if np.all(self.prior_variance == DEFAULT_PRIOR_VARIANCE):
             self.prior_variance = compute_prior_variance(
                 self.y_vector, self.n_evaluations, n_objectives
             )
@@ -445,11 +433,14 @@ class BayesianOptimization:
         self.reference_point = np.array([0.0] * n_objectives)
 
         # Plot flag
-        self.plot = kwargs.get("plot", True)
+        self.plot = kwargs.get("plot", DEFAULT_PLOT_ENABLED) and PLOTTING_AVAILABLE
 
-    def optimize(self):
+    def optimize(self) -> None:
         """
         Perform the Multi-Objective Bayesian optimization.
+
+        This method runs the main optimization loop, evaluating the objective
+        function and updating the Gaussian Process surrogate models iteratively.
         """
 
         # Initialize plotter if needed and 2D
@@ -459,15 +450,16 @@ class BayesianOptimization:
                 print(
                     "📊 Initializing static plot window (press 'Q' to close each plot)..."
                 )
-                self.plotter = HeatmapPlotterStatic(
-                    bounds=self.bounds,
-                    n_objectives=self.n_objectives,
-                )
+                if HeatmapPlotterStatic is not None:
+                    self.plotter = HeatmapPlotterStatic(
+                        bounds=self.bounds,
+                        n_objectives=self.n_objectives,
+                    )
             else:
                 # User provided custom plotter
                 print("📊 Using custom plotter...")
 
-        # Optimize with numba
+        # Optimize
         self.x_vector, self.y_vector, self.n_evaluations = optimize(
             x_vector=self.x_vector,
             y_vector=self.y_vector,
@@ -495,65 +487,25 @@ class BayesianOptimization:
             plotter_daemon=self.plotter,
         )
 
-    def pareto_analysis(self):
+    def pareto_analysis(self) -> np.ndarray:
         """
         Perform Pareto analysis on the results of the optimization.
-        Handles early stopping where not all iterations are used.
+
+        Identifies and returns the Pareto-efficient points from all
+        evaluated solutions. Handles early stopping where not all
+        iterations are used.
+
+        Returns:
+            Array of Pareto-efficient objective values (n_pareto, n_objectives).
         """
         # Work only with evaluated points
         evaluated_y = self.y_vector[: self.n_evaluations]
         evaluated_x = self.x_vector[: self.n_evaluations]
 
-        # Compute Pareto efficiency on evaluated points
-        is_efficient = is_pareto_efficient(evaluated_y)
+        # Compute Pareto front
+        pareto_inputs, pareto_objectives = compute_pareto_front(evaluated_x, evaluated_y)
 
-        # Extract Pareto-efficient points and inputs
-        pareto_points = evaluated_y[is_efficient]
-        pareto_input_points = evaluated_x[is_efficient]
+        # Print results
+        print_pareto_analysis(pareto_inputs, pareto_objectives)
 
-        print("📊 Pareto Analysis Results:")
-        for i, point in enumerate(pareto_points):
-            print(f"Input: {pareto_input_points[i]}, Pareto Point {i + 1}: {point}")
-
-        return pareto_points
-
-
-if __name__ == "__main__":
-    X_MAX = 300
-    Y_MAX = 300
-    Z_MAX = 300
-
-    # Example usage
-    _bounds = [
-        (0, X_MAX),
-        (0, Y_MAX),
-        # (0, Z_MAX),
-    ]
-
-    # Initialize Dynamic Plotter (Daemon)
-    dynamic_plotter = HeatmapPlotterDaemon(
-        bounds=_bounds,
-        n_objectives=len(_bounds),
-    )
-
-    start_time = time.time()
-    print("\n⚡ Starting optimization...\n")
-
-    optimizer = BayesianOptimization(
-        toy_function,
-        _bounds,
-        n_objectives=len(_bounds),
-        initial_samples=(X_MAX + Y_MAX) // 100,  # 1% of grid size
-        n_iterations=15,
-        batch_size=X_MAX // 100,  # 1% of grid size
-        betas=np.array([2.0] * len(_bounds)),
-        plot=False,
-        plotter=dynamic_plotter,
-    )
-
-    optimizer.optimize()
-
-    end_time = time.time()
-    print(f"\n🎉 Optimization completed in {end_time - start_time:.2f} seconds.")
-
-    optimizer.pareto_analysis()
+        return pareto_objectives
