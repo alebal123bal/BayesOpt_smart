@@ -42,17 +42,12 @@ class PyQtPlotter:
         if self.app is None:
             self.app = QtWidgets.QApplication([])
 
-        # Create main window
-        self.win = pg.GraphicsLayoutWidget(show=True, title="Bayesian Optimization")
-        self.win.resize(1800, 600 * n_objectives)
-        self.win.setWindowTitle(f"Bayesian Optimization - {self.nx}×{self.ny} Grid")
-
-        # Store plot items
+        # Delay window creation until first plot call
+        self.win = None
         self.plots = []
         self.image_items = []
         self.scatter_items = []
-        
-        self._create_plots()
+        self._initialized = False
 
     def _create_plots(self):
         """Create the plot layout."""
@@ -152,6 +147,15 @@ class PyQtPlotter:
             print("⚠️ PyQtPlotter only supports 2D input space.")
             return
 
+        # Create window on first call when we have data
+        if not self._initialized:
+            print("📊 Opening plot window with initial data...")
+            self.win = pg.GraphicsLayoutWidget(show=True, title="Bayesian Optimization")
+            self.win.resize(1800, 600 * self.n_objectives)
+            self.win.setWindowTitle(f"Bayesian Optimization - {self.nx}×{self.ny} Grid")
+            self._create_plots()
+            self._initialized = True
+
         # Reshape to 2D grids (flip for correct orientation)
         mu_grids = [mu.reshape(self.nx, self.ny) for mu in mu_objectives]
         sigma_grids = [np.sqrt(var.reshape(self.nx, self.ny)) for var in variance_objectives]
@@ -193,11 +197,16 @@ class PyQtPlotter:
 
     def show(self):
         """Keep the window open (blocking until closed)."""
-        print("\n📊 Optimization complete. Close the plot window to exit.")
-        self.app.exec()
+        if self._initialized:
+            print("\n📊 Optimization complete. Close the plot window to exit.")
+            self.app.exec()
+        else:
+            print("⚠️ No plot window created (no data was plotted).")
 
     def close(self):
         """Close the plot window."""
+        if self.win is not None:
+            self.win.close()
         self.win.close()
 
 
