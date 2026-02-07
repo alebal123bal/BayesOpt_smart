@@ -55,7 +55,14 @@ from .config import (
 
 # Optional: Export plotting classes if available
 try:
-    from plotting import HeatmapPlotterDaemon, HeatmapPlotterStatic
+    from plotting import (
+        Plotter, 
+        PlotterStatic,
+        PyQtPlotter, 
+        PyQtPlotterStatic,
+        HeatmapPlotterDaemon, 
+        HeatmapPlotterStatic
+    )
     __all__ = [
         # Main optimizer
         "BayesianOptimization",
@@ -64,7 +71,12 @@ try:
         "is_pareto_efficient",
         "compute_pareto_front",
         "print_pareto_analysis",
-        # Plotting
+        # Plotting (new fast PyQtGraph)
+        "Plotter",
+        "PlotterStatic",
+        "PyQtPlotter",
+        "PyQtPlotterStatic",
+        # Plotting (legacy Matplotlib)
         "HeatmapPlotterDaemon",
         "HeatmapPlotterStatic",
         # Version

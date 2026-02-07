@@ -14,8 +14,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
 from bayesopt import BayesianOptimization
-from examples.benchmark_functions import toy_function, sphere
-from plotting import HeatmapPlotterDaemon
+from examples.benchmark_functions import sphere, toy_function
+from plotting import PyQtPlotter
 
 
 def main():
@@ -29,8 +29,8 @@ def main():
         (0, Y_MAX),
     ]
 
-    # Initialize Dynamic Plotter (Daemon)
-    dynamic_plotter = HeatmapPlotterDaemon(
+    # Initialize PyQtGraph Plotter (fast, OpenGL-accelerated)
+    plotter = PyQtPlotter(
         bounds=bounds,
         n_objectives=len(bounds),
     )
@@ -40,15 +40,15 @@ def main():
 
     # Create optimizer
     optimizer = BayesianOptimization(
-        sphere,
+        toy_function,
         bounds,
         n_objectives=len(bounds),
         initial_samples=(X_MAX + Y_MAX) // 100,  # 1% of grid size
         n_iterations=15,
         batch_size=X_MAX // 100,  # 1% of grid size
         betas=np.array([2.0] * len(bounds)),
-        plot=False,
-        plotter=dynamic_plotter,
+        plot=True,
+        plotter=plotter,
     )
 
     # Run optimization
@@ -59,6 +59,9 @@ def main():
 
     # Analyze results
     optimizer.pareto_analysis()
+
+    # Keep the plot window open
+    plotter.show()
 
 
 if __name__ == "__main__":
