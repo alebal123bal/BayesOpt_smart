@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
-from bayesian_optimization import BayesianOptimization
+from bayesopt import BayesianOptimization
 from examples.benchmark_functions import toy_function
 from heatmap_plotter import HeatmapPlotterDaemon
 
@@ -47,7 +47,7 @@ def main():
         n_iterations=15,
         batch_size=X_MAX // 100,  # 1% of grid size
         betas=np.array([2.0] * len(bounds)),
-        plot=True,
+        plot=False,
         plotter=dynamic_plotter,
     )
 

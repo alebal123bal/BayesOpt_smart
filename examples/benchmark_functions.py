@@ -6,7 +6,7 @@ to test and demonstrate the optimization algorithms.
 """
 
 import numpy as np
-from config import DEBUG_MODE
+from bayesopt.config import DEBUG_MODE
 
 # Conditional imports
 if DEBUG_MODE:

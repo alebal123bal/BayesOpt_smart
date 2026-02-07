@@ -29,10 +29,10 @@ __version__ = "2.0.0"
 __author__ = "BayesOpt_smart Team"
 
 # Main optimizer class
-from bayesian_optimization import BayesianOptimization
+from .bayesian_optimization import BayesianOptimization
 
 # Utility functions
-from utils import (
+from .utils import (
     select_next_batch,
     is_pareto_efficient,
     compute_pareto_front,
@@ -40,7 +40,7 @@ from utils import (
 )
 
 # Configuration
-from config import (
+from .config import (
     DEBUG_MODE,
     RANDOM_SEED,
     DEFAULT_PRIOR_MEAN,

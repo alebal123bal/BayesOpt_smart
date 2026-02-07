@@ -6,7 +6,7 @@ that guide the exploration-exploitation trade-off during optimization.
 """
 
 import numpy as np
-from config import DEBUG_MODE
+from .config import DEBUG_MODE
 
 # Conditional imports and setup
 if DEBUG_MODE:

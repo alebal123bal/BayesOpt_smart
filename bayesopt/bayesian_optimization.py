@@ -19,7 +19,7 @@ except ImportError:
     HeatmapPlotterStatic = None  # type: ignore
 
 # Import configuration
-from config import (
+from .config import (
     DEFAULT_PRIOR_MEAN,
     DEFAULT_PRIOR_VARIANCE,
     DEFAULT_LENGTH_SCALE,
@@ -30,7 +30,7 @@ from config import (
 )
 
 # Import kernel functions
-from numba_kernels import (
+from .numba_kernels import (
     initialize_lhs_integer,
     compute_prior_mean,
     compute_prior_variance,
@@ -44,13 +44,13 @@ from numba_kernels import (
 )
 
 # Import acquisition functions
-from acquisition import (
+from .acquisition import (
     update_ucb,
     update_hypervolume_improvement,
 )
 
 # Import utility functions
-from utils import (
+from .utils import (
     select_next_batch,
     compute_pareto_front,
     print_pareto_analysis,

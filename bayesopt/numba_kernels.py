@@ -7,7 +7,7 @@ computationally intensive functions accelerated using Numba's JIT compilation.
 
 import numpy as np
 from scipy.optimize import minimize
-from config import (
+from .config import (
     DEBUG_MODE,
     KERNEL_JITTER,
     CHOLESKY_JITTER,
