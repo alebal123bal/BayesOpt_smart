@@ -74,6 +74,9 @@ def main():
     end_time = time.time()
     print(f"\n🎉 Optimization completed in {end_time - start_time:.2f} seconds.")
 
+    # Create animated GIF from saved images
+    graph_saver.finalize()
+
     # Analyze results
     optimizer.pareto_analysis()
 

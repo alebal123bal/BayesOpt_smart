@@ -319,6 +319,8 @@ class GraphSaverCallback:
         save_every: int = 1,
         save_format: str = "png",
         add_timestamp: bool = True,
+        create_gif: bool = True,
+        gif_duration: int = 500,
     ):
         """
         Initialize graph saver callback.
@@ -331,12 +333,16 @@ class GraphSaverCallback:
             save_every: Save every N iterations (default: 1 = save all)
             save_format: Image format ('png', 'jpg', 'svg')
             add_timestamp: Whether to add timestamp to folder name
+            create_gif: Whether to create an animated GIF at the end (default: True)
+            gif_duration: Duration per frame in milliseconds (default: 500ms)
         """
         self.plotter_class = plotter_class
         self.bounds = bounds
         self.n_objectives = n_objectives
         self.save_every = save_every
         self.save_format = save_format
+        self.create_gif = create_gif
+        self.gif_duration = gif_duration
 
         # Setup output directory
         if output_dir is None:
@@ -384,3 +390,27 @@ class GraphSaverCallback:
         )
 
         print(f"  💾 Saved plot: {filename.name}")
+
+    def finalize(self):
+        """
+        Create animated GIF from all saved images.
+
+        Call this method after optimization completes to generate
+        the animation.
+        """
+        if not self.create_gif:
+            return
+
+        try:
+            from plotting import create_optimization_gif
+
+            create_optimization_gif(
+                image_folder=str(self.output_dir),
+                output_filename="optimization.gif",
+                duration=self.gif_duration,
+                loop=0,
+            )
+        except ImportError:
+            print("⚠️ Could not import create_optimization_gif. GIF creation skipped.")
+        except Exception as e:
+            print(f"⚠️ Failed to create GIF: {e}")
