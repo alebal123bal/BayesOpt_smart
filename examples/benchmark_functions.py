@@ -44,8 +44,8 @@ def toy_function(x: np.ndarray) -> np.ndarray:
     Returns:
         Output array containing [f(x), g(x)].
     """
-    f_x = -((x[0] - 150) ** 2) / 100 + 100
-    g_x = -((x[1] - 150) ** 2) / 100 + 20
+    f_x = -((x[0] - 150) ** 2) + 100
+    g_x = -((x[1] - 150) ** 2) + 20
 
     return np.array([f_x, g_x])
 
@@ -66,9 +66,9 @@ def toy_function_3d(x: np.ndarray) -> np.ndarray:
     Returns:
         Output array containing [f(x), g(x), h(x)].
     """
-    f_x = -((x[0] - 150) ** 2) / 100 + 100
-    g_x = -((x[1] - 150) ** 2) / 100 + 20
-    h_x = -((x[2] - 5)) + 120
+    f_x = -((x[0] - 150) ** 2) + 100
+    g_x = -((x[1] - 150) ** 2) + 20
+    h_x = -((x[2] - 5) ** 2) + 120
 
     return np.array([f_x, g_x, h_x])
 

@@ -31,6 +31,15 @@ __author__ = "BayesOpt_smart Team"
 # Main optimizer class
 from .bayesian_optimization import BayesianOptimization
 
+# Callback classes
+from .callbacks import (
+    PlotterCallback,
+    ProgressLogger,
+    OptimizationLogger,
+    PerformanceMonitor,
+    ConvergenceChecker,
+)
+
 # Utility functions
 from .pareto import (
     is_pareto_efficient,
@@ -64,6 +73,12 @@ try:
     __all__ = [
         # Main optimizer
         "BayesianOptimization",
+        # Callbacks
+        "PlotterCallback",
+        "ProgressLogger",
+        "OptimizationLogger",
+        "PerformanceMonitor",
+        "ConvergenceChecker",
         # Utilities
         "select_next_batch",
         "is_pareto_efficient",
@@ -81,6 +96,12 @@ except ImportError:
     __all__ = [
         # Main optimizer
         "BayesianOptimization",
+        # Callbacks
+        "PlotterCallback",
+        "ProgressLogger",
+        "OptimizationLogger",
+        "PerformanceMonitor",
+        "ConvergenceChecker",
         # Utilities
         "select_next_batch",
         "is_pareto_efficient",

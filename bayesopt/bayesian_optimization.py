@@ -9,14 +9,6 @@ import time
 from typing import Callable, List, Tuple, Optional, Any
 import numpy as np
 
-# Try to import plotting modules (optional dependency)
-try:
-    from plotting import PyQtPlotter
-    PLOTTING_AVAILABLE = True
-except ImportError:
-    PLOTTING_AVAILABLE = False
-    PyQtPlotter = None  # type: ignore
-
 # Import configuration
 from .config import (
     DEFAULT_PRIOR_MEAN,
@@ -109,23 +101,12 @@ def optimize(
         Tuple of (x_vector, y_vector, n_evaluations) after optimization.
     """
 
-    print(f"🚀 Starting optimization with {n_evaluations} initial evaluations.")
-
-    # Print initial evaluated points
-    for i in range(n_evaluations):
-        print(f"🔍 Debug: Initial point {x_vector[i]} | Objectives = {y_vector[i]}")
-
     # Total number of evaluations
     last_eval = 0
 
     for current_eval in range(n_evaluations, total_samples, batch_size):
         # Profile iteration start time
         iter_start = time.perf_counter()
-
-        print(
-            "\n"
-            f"🔄 Debug: Starting iteration {current_eval}, n_evaluations={current_eval}"
-        )
 
         # Profile initial time
         t0 = time.perf_counter()
@@ -142,11 +123,6 @@ def optimize(
 
         # Profile hyperparameter optimization time
         t1 = time.perf_counter()
-
-        print(
-            "🔄 Debug: Optimized hyperparameters:",
-            np.array2string(optimized_hyperparams.x, precision=2, suppress_small=True),
-        )
 
         # Update kernel matrices for each objective
         update_k(
@@ -232,35 +208,17 @@ def optimize(
         # Profile prediction and acquisition time
         t3 = time.perf_counter()
 
-        print("🔍 Debug: Selected next batch:")
-        for point in x_next:
-            print(f" - {point}")
-
         # Evaluate the function at the new points
         for b_idx, point in enumerate(x_next):
             # Evaluate the function at the new point
             x_vector[current_eval + b_idx] = point
             y_vector[current_eval + b_idx] = function(point)
 
-            print(
-                f"🔍 Debug: Evaluating point {point} "
-                f"| Objectives = {y_vector[current_eval + b_idx]}"
-            )
-
         # Update the total number of evaluations
         last_eval = current_eval
 
         # Profile evaluation time
         t4 = time.perf_counter()
-
-        print(
-            f"[Iter {current_eval}] "
-            f"Hyperparams: {t1 - t0:.4f}s | "
-            f"Kernels: {t2 - t1:.4f}s | "
-            f"Acquisition: {t3 - t2:.4f}s | "
-            f"Eval: {t4 - t3:.4f}s | "
-            f"TOTAL: {t4 - iter_start:.4f}s"
-        )
 
         # Call callbacks with current state
         if callbacks:
@@ -273,6 +231,7 @@ def optimize(
                 'variance_objectives': variance_objectives,
                 'acquisition_values': acquisition_values,
                 'x_next': x_next,
+                'hyperparams': optimized_hyperparams.x,
                 'timings': {
                     'hyperparams': t1 - t0,
                     'kernels': t2 - t1,
