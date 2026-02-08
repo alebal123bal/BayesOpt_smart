@@ -2,7 +2,7 @@
 2D Bayesian Optimization Demo.
 
 This example demonstrates multi-objective Bayesian optimization
-on a 2D toy function with visualization.
+on a 2D toy function with visualization using the new callback architecture.
 """
 
 import sys
@@ -14,12 +14,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
 from bayesopt import BayesianOptimization
-from examples.benchmark_functions import sphere, toy_function
+from examples.benchmark_functions import toy_function
 from plotting import PyQtPlotter
 
 
 def main():
-    """Run 2D optimization demo."""
+    """Run 2D optimization demo with callback architecture."""
     X_MAX = 300
     Y_MAX = 300
 
@@ -35,10 +35,30 @@ def main():
         n_objectives=len(bounds),
     )
 
-    start_time = time.time()
-    print("\n⚡ Starting 2D optimization demo...\n")
+    # Define callback function for plotting
+    def plot_callback(state):
+        """Called after each iteration to update visualization."""
+        if state['x_vector'].shape[1] == 2:
+            plotter.plot(
+                x_vector=state['x_vector'],
+                y_vector=state['y_vector'],
+                mu_objectives=state['mu_objectives'],
+                variance_objectives=state['variance_objectives'],
+                acquisition_values=state['acquisition_values'],
+                x_next=state.get('x_next'),
+            )
 
-    # Create optimizer
+    # Optional: Add a logging callback
+    def log_callback(state):
+        """Called after each iteration to log progress."""
+        timings = state['timings']
+        print(f"  └─ Callback received iteration {state['iteration']} "
+              f"({state['n_evaluations']} total evals, {timings['total']:.3f}s)")
+
+    start_time = time.time()
+    print("\n⚡ Starting 2D optimization demo with callback architecture...\n")
+
+    # Create optimizer with callbacks
     optimizer = BayesianOptimization(
         toy_function,
         bounds,
@@ -47,11 +67,10 @@ def main():
         n_iterations=15,
         batch_size=X_MAX // 100,  # 1% of grid size
         betas=np.array([2.0] * len(bounds)),
-        plot=True,
-        plotter=plotter,
+        callbacks=[plot_callback, log_callback],  # Multiple observers!
     )
 
-    # Run optimization
+    # Run optimization (callbacks will be called automatically)
     optimizer.optimize()
 
     end_time = time.time()

@@ -11,12 +11,11 @@ import numpy as np
 
 # Try to import plotting modules (optional dependency)
 try:
-    from plotting import PyQtPlotter, PyQtPlotterStatic
+    from plotting import PyQtPlotter
     PLOTTING_AVAILABLE = True
 except ImportError:
     PLOTTING_AVAILABLE = False
     PyQtPlotter = None  # type: ignore
-    PyQtPlotterStatic = None  # type: ignore
 
 # Import configuration
 from .config import (
@@ -55,6 +54,8 @@ from .pareto import (
     compute_pareto_front,
     print_pareto_analysis,
 )
+
+
 def optimize(
     x_vector: np.ndarray,
     y_vector: np.ndarray,
@@ -78,8 +79,7 @@ def optimize(
     length_scales: np.ndarray,
     batch_size: int,
     bounds: List[Tuple[int, int]],  # pylint: disable=unused-argument
-    plot: bool,
-    plotter_daemon: Optional[Any] = None,
+    callbacks: Optional[List[Callable]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, int]:
     """
     Perform the Multi-Objective Bayesian optimization.
@@ -103,7 +103,8 @@ def optimize(
         length_scales (np.ndarray): Length scale parameters for the kernel.
         batch_size (int): Number of points to evaluate in each batch.
         bounds (list of tuples): Bounds for the optimization space [(x_min, x_max), ...].
-        plot (bool): Flag to enable/disable plotting.
+        callbacks (list of callable): Optional list of callbacks after each iteration.
+            Each callback receives a state dict with current optimization state.
 
     Returns:
         Tuple of (x_vector, y_vector, n_evaluations) after optimization.
@@ -236,17 +237,6 @@ def optimize(
         for point in x_next:
             print(f" - {point}")
 
-        # Plot
-        if x_vector.shape[1] == 2 and plot and plotter_daemon is not None:
-            plotter_daemon.plot(
-                x_vector=x_vector[:current_eval],
-                y_vector=y_vector[:current_eval],
-                mu_objectives=mu_objectives,
-                variance_objectives=variance_objectives,
-                acquisition_values=acquisition_values,
-                x_next=x_next,
-            )
-
         # Evaluate the function at the new points
         for b_idx, point in enumerate(x_next):
             # Evaluate the function at the new point
@@ -272,6 +262,28 @@ def optimize(
             f"Eval: {t4 - t3:.4f}s | "
             f"TOTAL: {t4 - iter_start:.4f}s"
         )
+
+        # Call callbacks with current state
+        if callbacks:
+            state = {
+                'iteration': current_eval,
+                'n_evaluations': current_eval + batch_size,
+                'x_vector': x_vector[:current_eval + batch_size],
+                'y_vector': y_vector[:current_eval + batch_size],
+                'mu_objectives': mu_objectives,
+                'variance_objectives': variance_objectives,
+                'acquisition_values': acquisition_values,
+                'x_next': x_next,
+                'timings': {
+                    'hyperparams': t1 - t0,
+                    'kernels': t2 - t1,
+                    'acquisition': t3 - t2,
+                    'eval': t4 - t3,
+                    'total': t4 - iter_start,
+                },
+            }
+            for callback in callbacks:
+                callback(state)
 
     return x_vector, y_vector, last_eval + 1
 
@@ -304,8 +316,13 @@ class BayesianOptimization:
             n_objectives: Number of objectives.
             n_iterations: The number of optimization iterations.
             **kwargs: Additional parameters:
+                - callbacks (callable or list): Callback(s) called after each iteration.
+                    Can be a single callable or list of callables.
+                    Each callback receives a state dict with optimization data.
                 - plotter: Optional plotter instance (PyQtPlotter or PyQtPlotterStatic).
+                    Deprecated: Use callbacks parameter instead.
                 - plot (bool): Enable/disable plotting. Default: from config.
+                    Deprecated: Use callbacks parameter with plotter instead.
                 - prior_mean (List[float]): Prior mean for each objective.
                 - prior_variance (List[float]): Prior variance for each objective.
                 - length_scales (List[float]): Length scales for each objective.
@@ -319,11 +336,20 @@ class BayesianOptimization:
         self.n_objectives = n_objectives
         self.n_iterations = n_iterations
 
-        # Get plotter from kwargs or use default
+        # Setup callbacks (new recommended approach)
+        callbacks_param = kwargs.get("callbacks", None)
+        if callbacks_param is not None:
+            # Normalize to list
+            self.callbacks = callbacks_param if isinstance(callbacks_param, list) else [callbacks_param]
+        else:
+            self.callbacks = []
+
+        # Legacy plotter support (backward compatibility)
         self.plotter = kwargs.get("plotter", None)
+        self.plot = kwargs.get("plot", DEFAULT_PLOT_ENABLED) and PLOTTING_AVAILABLE
 
         # Check plotting availability
-        if kwargs.get("plot", DEFAULT_PLOT_ENABLED) and not PLOTTING_AVAILABLE:
+        if self.plot and not PLOTTING_AVAILABLE:
             print(
                 "⚠️  Warning: Plotting requested but PyQtGraph not available. "
                 "Continuing without plotting."
@@ -432,9 +458,6 @@ class BayesianOptimization:
         # Reference point for hypervolume (should be worse than any expected objective value)
         self.reference_point = np.array([0.0] * n_objectives)
 
-        # Plot flag
-        self.plot = kwargs.get("plot", DEFAULT_PLOT_ENABLED) and PLOTTING_AVAILABLE
-
     def optimize(self) -> None:
         """
         Perform the Multi-Objective Bayesian optimization.
@@ -443,8 +466,12 @@ class BayesianOptimization:
         function and updating the Gaussian Process surrogate models iteratively.
         """
 
-        # Initialize plotter if needed and 2D
-        if self.plot and self.dim == 2:
+        # Setup callbacks list (combining explicit callbacks + legacy plotter)
+        callbacks_to_use = list(self.callbacks)  # Copy user callbacks
+
+        # Legacy plotter support (backward compatibility)
+        # Only use legacy if no callbacks were provided (avoid double plotting)
+        if self.plot and self.dim == 2 and not self.callbacks:
             if self.plotter is None:
                 # Create default PyQtGraph plotter
                 print("📊 Initializing PyQtGraph plotter...")
@@ -456,6 +483,20 @@ class BayesianOptimization:
             else:
                 # User provided custom plotter
                 print("📊 Using custom plotter...")
+            
+            # Add plotter as callback if it has a plot method
+            if self.plotter is not None and hasattr(self.plotter, 'plot'):
+                def plotter_callback(state):
+                    if state['x_vector'].shape[1] == 2:
+                        self.plotter.plot(
+                            x_vector=state['x_vector'],
+                            y_vector=state['y_vector'],
+                            mu_objectives=state['mu_objectives'],
+                            variance_objectives=state['variance_objectives'],
+                            acquisition_values=state['acquisition_values'],
+                            x_next=state.get('x_next'),
+                        )
+                callbacks_to_use.append(plotter_callback)
 
         # Optimize
         self.x_vector, self.y_vector, self.n_evaluations = optimize(
@@ -481,8 +522,7 @@ class BayesianOptimization:
             length_scales=self.length_scales,
             batch_size=self.batch_size,
             bounds=self.bounds,
-            plot=self.plot,
-            plotter_daemon=self.plotter,
+            callbacks=callbacks_to_use if callbacks_to_use else None,
         )
 
     def pareto_analysis(self) -> np.ndarray:

@@ -207,7 +207,6 @@ class PyQtPlotter:
         """Close the plot window."""
         if self.win is not None:
             self.win.close()
-        self.win.close()
 
 
 class PyQtPlotterStatic:
