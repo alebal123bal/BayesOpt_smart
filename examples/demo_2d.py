@@ -14,9 +14,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
 from bayesopt import BayesianOptimization
-from bayesopt.callbacks import PlotterCallback, ProgressLogger
+from bayesopt.callbacks import PlotterCallback, ProgressLogger, GraphSaverCallback
 from examples.benchmark_functions import toy_function
-from plotting import PyQtPlotter
+from plotting import PyQtPlotter, PyQtPlotterStatic
 
 
 def main():
@@ -38,7 +38,16 @@ def main():
 
     # Setup callbacks
     plotter_callback = PlotterCallback(plotter)
-    progress_logger = ProgressLogger(log_file='outputs/logs/optimization.log', verbose=True)
+    progress_logger = ProgressLogger(
+        log_file="outputs/logs/optimization.log", verbose=True
+    )
+    graph_saver = GraphSaverCallback(
+        plotter_class=PyQtPlotterStatic,
+        bounds=bounds,
+        n_objectives=len(bounds),
+        save_every=1,
+        save_format="png",
+    )
 
     start_time = time.time()
     print("\n⚡ Starting 2D optimization demo with callback architecture...\n")
@@ -52,7 +61,11 @@ def main():
         n_iterations=15,
         batch_size=X_MAX // 100,  # 1% of grid size
         betas=np.array([2.0] * len(bounds)),
-        callbacks=[plotter_callback, progress_logger],
+        callbacks=[
+            # plotter_callback,
+            progress_logger,
+            graph_saver,
+        ],
     )
 
     # Run optimization (callbacks will be called automatically)

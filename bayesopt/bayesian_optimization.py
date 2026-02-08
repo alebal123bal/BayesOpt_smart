@@ -223,21 +223,21 @@ def optimize(
         # Call callbacks with current state
         if callbacks:
             state = {
-                'iteration': current_eval,
-                'n_evaluations': current_eval + batch_size,
-                'x_vector': x_vector[:current_eval + batch_size],
-                'y_vector': y_vector[:current_eval + batch_size],
-                'mu_objectives': mu_objectives,
-                'variance_objectives': variance_objectives,
-                'acquisition_values': acquisition_values,
-                'x_next': x_next,
-                'hyperparams': optimized_hyperparams.x,
-                'timings': {
-                    'hyperparams': t1 - t0,
-                    'kernels': t2 - t1,
-                    'acquisition': t3 - t2,
-                    'eval': t4 - t3,
-                    'total': t4 - iter_start,
+                "iteration": current_eval,
+                "n_evaluations": current_eval + batch_size,
+                "x_vector": x_vector[: current_eval + batch_size],
+                "y_vector": y_vector[: current_eval + batch_size],
+                "mu_objectives": mu_objectives,
+                "variance_objectives": variance_objectives,
+                "acquisition_values": acquisition_values,
+                "x_next": x_next,
+                "hyperparams": optimized_hyperparams.x,
+                "timings": {
+                    "hyperparams": t1 - t0,
+                    "kernels": t2 - t1,
+                    "acquisition": t3 - t2,
+                    "eval": t4 - t3,
+                    "total": t4 - iter_start,
                 },
             }
             for callback in callbacks:
@@ -294,7 +294,11 @@ class BayesianOptimization:
         callbacks_param = kwargs.get("callbacks", None)
         if callbacks_param is not None:
             # Normalize to list
-            self.callbacks = callbacks_param if isinstance(callbacks_param, list) else [callbacks_param]
+            self.callbacks = (
+                callbacks_param
+                if isinstance(callbacks_param, list)
+                else [callbacks_param]
+            )
         else:
             self.callbacks = []
 
@@ -455,7 +459,9 @@ class BayesianOptimization:
         evaluated_x = self.x_vector[: self.n_evaluations]
 
         # Compute Pareto front
-        pareto_inputs, pareto_objectives = compute_pareto_front(evaluated_x, evaluated_y)
+        pareto_inputs, pareto_objectives = compute_pareto_front(
+            evaluated_x, evaluated_y
+        )
 
         # Print results
         print_pareto_analysis(pareto_inputs, pareto_objectives)
