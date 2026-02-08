@@ -240,17 +240,17 @@ class PyQtPlotter:
             self.win.close()
 
 
-class PyQtPlotterStatic:
+class StaticPlotter:
     """
     Static plotter for Bayesian Optimization visualization.
 
-    Uses PyQtGraph for interactive display and Matplotlib for
-    high-quality static image exports (PNG, PDF, SVG).
+    Uses Matplotlib to generate high-quality static image exports
+    (PNG, PDF, SVG) for saving optimization progress.
     """
 
     def __init__(self, bounds, n_objectives):
         """
-        Initialize the static PyQtGraph plotter.
+        Initialize the static plotter.
 
         Args:
             bounds (list of tuples): [(x_min, x_max), (y_min, y_max)]
@@ -268,133 +268,6 @@ class PyQtPlotterStatic:
         self.x_grid = np.arange(x_min, x_max)
         self.y_grid = np.arange(y_min, y_max)
         self.nx, self.ny = len(self.x_grid), len(self.y_grid)
-
-    def plot(
-        self,
-        x_vector,
-        _y_vector,  # Not used in current implementation
-        mu_objectives,
-        variance_objectives,
-        acquisition_values,
-        x_next=None,
-    ):
-        """
-        Create and show a static plot (blocks until closed).
-
-        Args:
-            x_vector (np.ndarray): Evaluated points, shape (n_eval, dim)
-            _y_vector (np.ndarray): Objective values (not used in current implementation)
-            mu_objectives (np.ndarray): Mean predictions, shape (n_objectives, n_grid_points)
-            variance_objectives (np.ndarray): Variance predictions, shape (n_objectives, n_grid_points)
-            acquisition_values (np.ndarray): Acquisition values per grid point, shape (n_grid_points,)
-            x_next (np.ndarray): Next candidate points to evaluate, shape (n_next, dim)
-        """
-        if x_vector.shape[1] != 2:
-            print("⚠️ PyQtPlotterStatic only supports 2D input space.")
-            return
-
-        app = QtWidgets.QApplication.instance()
-        if app is None:
-            app = QtWidgets.QApplication([])
-
-        win = pg.GraphicsLayoutWidget(show=True, title="Bayesian Optimization")
-        win.resize(1800, 600 * self.n_objectives)
-        win.setWindowTitle(f"Bayesian Optimization - {self.nx}×{self.ny} Grid")
-
-        # Reshape to 2D grids
-        mu_grids = [mu.reshape(self.nx, self.ny) for mu in mu_objectives]
-        sigma_grids = [
-            np.sqrt(var.reshape(self.nx, self.ny)) for var in variance_objectives
-        ]
-        acquisition_grid = acquisition_values.reshape(self.nx, self.ny)
-
-        for obj_idx in range(self.n_objectives):
-            # Mean plot
-            p1 = win.addPlot(title=f"Objective {obj_idx}: Mean (μ)")
-            p1.setAspectLocked(False)
-            p1.showGrid(x=True, y=True, alpha=0.3)
-            img1 = pg.ImageItem()
-            img1.setImage(mu_grids[obj_idx].T, autoLevels=True)
-            img1.setRect(
-                QtCore.QRectF(
-                    self.x_min,
-                    self.y_min,
-                    self.x_max - self.x_min,
-                    self.y_max - self.y_min,
-                )
-            )
-            p1.addItem(img1)
-            scatter1 = pg.ScatterPlotItem(
-                x=x_vector[:, 0],
-                y=x_vector[:, 1],
-                size=10,
-                pen=pg.mkPen(None),
-                brush=pg.mkBrush(255, 255, 0, 200),
-            )
-            p1.addItem(scatter1)
-
-            # Uncertainty plot
-            p2 = win.addPlot(title=f"Objective {obj_idx}: Uncertainty (σ)")
-            p2.setAspectLocked(False)
-            p2.showGrid(x=True, y=True, alpha=0.3)
-            img2 = pg.ImageItem()
-            img2.setImage(sigma_grids[obj_idx].T, autoLevels=True)
-            img2.setRect(
-                QtCore.QRectF(
-                    self.x_min,
-                    self.y_min,
-                    self.x_max - self.x_min,
-                    self.y_max - self.y_min,
-                )
-            )
-            p2.addItem(img2)
-            scatter2 = pg.ScatterPlotItem(
-                x=x_vector[:, 0],
-                y=x_vector[:, 1],
-                size=10,
-                pen=pg.mkPen(None),
-                brush=pg.mkBrush(255, 255, 0, 200),
-            )
-            p2.addItem(scatter2)
-
-            # Acquisition plot
-            p3 = win.addPlot(title=f"Objective {obj_idx}: Acquisition")
-            p3.setAspectLocked(False)
-            p3.showGrid(x=True, y=True, alpha=0.3)
-            img3 = pg.ImageItem()
-            img3.setImage(acquisition_grid.T, autoLevels=True)
-            img3.setRect(
-                QtCore.QRectF(
-                    self.x_min,
-                    self.y_min,
-                    self.x_max - self.x_min,
-                    self.y_max - self.y_min,
-                )
-            )
-            p3.addItem(img3)
-            scatter3 = pg.ScatterPlotItem(
-                x=x_vector[:, 0],
-                y=x_vector[:, 1],
-                size=10,
-                pen=pg.mkPen(None),
-                brush=pg.mkBrush(255, 255, 0, 200),
-            )
-            p3.addItem(scatter3)
-
-            if x_next is not None and len(x_next) > 0:
-                scatter_next = pg.ScatterPlotItem(
-                    x=x_next[:, 0],
-                    y=x_next[:, 1],
-                    size=15,
-                    pen=pg.mkPen("r", width=2),
-                    brush=pg.mkBrush(255, 0, 0, 200),
-                    symbol="star",
-                )
-                p3.addItem(scatter_next)
-
-            win.nextRow()
-
-        app.exec()
 
     def save_to_file(
         self,
@@ -546,12 +419,6 @@ class PyQtPlotterStatic:
             filename, dpi=150, facecolor="white", edgecolor="none", bbox_inches="tight"
         )
         plt.close(fig)
-
-    def close(self):
-        """Close any open windows."""
-        app = QtWidgets.QApplication.instance()
-        if app is not None:
-            app.closeAllWindows()
 
 
 def create_optimization_gif(

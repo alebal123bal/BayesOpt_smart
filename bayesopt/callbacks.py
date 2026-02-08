@@ -326,7 +326,7 @@ class GraphSaverCallback:
         Initialize graph saver callback.
 
         Args:
-            plotter_class: Static plotter class to use (e.g., PyQtPlotterStatic)
+            plotter_class: Static plotter class to use (e.g., StaticPlotter)
             bounds: Bounds for the input space
             n_objectives: Number of objectives
             output_dir: Output directory path. If None, uses 'outputs/figures'

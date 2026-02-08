@@ -16,7 +16,7 @@ import numpy as np
 from bayesopt import BayesianOptimization
 from bayesopt.callbacks import PlotterCallback, ProgressLogger, GraphSaverCallback
 from examples.benchmark_functions import toy_function
-from plotting import PyQtPlotter, PyQtPlotterStatic
+from plotting import PyQtPlotter, StaticPlotter
 
 
 def main():
@@ -42,7 +42,7 @@ def main():
         log_file="outputs/logs/optimization.log", verbose=True
     )
     graph_saver = GraphSaverCallback(
-        plotter_class=PyQtPlotterStatic,
+        plotter_class=StaticPlotter,
         bounds=bounds,
         n_objectives=len(bounds),
         save_every=1,
@@ -64,7 +64,7 @@ def main():
         callbacks=[
             # plotter_callback,
             progress_logger,
-            graph_saver,
+            # graph_saver,
         ],
     )
 

@@ -14,7 +14,7 @@ Main Components:
 Example:
     >>> from bayesian_optimization import BayesianOptimization
     >>> from examples import toy_function
-    >>> 
+    >>>
     >>> optimizer = BayesianOptimization(
     ...     function=toy_function,
     ...     bounds=[(0, 300), (0, 300)],
@@ -65,11 +65,12 @@ from .config import (
 # Optional: Export plotting classes if available
 try:
     from plotting import (
-        Plotter, 
+        Plotter,
         PlotterStatic,
-        PyQtPlotter, 
-        PyQtPlotterStatic,
+        PyQtPlotter,
+        StaticPlotter,
     )
+
     __all__ = [
         # Main optimizer
         "BayesianOptimization",
@@ -84,11 +85,11 @@ try:
         "is_pareto_efficient",
         "compute_pareto_front",
         "print_pareto_analysis",
-        # Plotting (PyQtGraph)
+        # Plotting
         "Plotter",
         "PlotterStatic",
         "PyQtPlotter",
-        "PyQtPlotterStatic",
+        "StaticPlotter",
         # Version
         "__version__",
     ]
