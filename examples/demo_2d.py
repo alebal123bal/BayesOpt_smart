@@ -64,7 +64,7 @@ def main():
         callbacks=[
             # plotter_callback,
             progress_logger,
-            # graph_saver,
+            graph_saver,
         ],
     )
 

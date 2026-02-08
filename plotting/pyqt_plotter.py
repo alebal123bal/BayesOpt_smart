@@ -420,73 +420,73 @@ class StaticPlotter:
         )
         plt.close(fig)
 
+    @staticmethod
+    def create_gif(
+        image_folder, output_filename="optimization.gif", duration=500, loop=0
+    ):
+        """
+        Create an animated GIF from a sequence of optimization iteration images.
 
-def create_optimization_gif(
-    image_folder, output_filename="optimization.gif", duration=500, loop=0
-):
-    """
-    Create an animated GIF from a sequence of optimization iteration images.
+        Args:
+            image_folder (str): Path to folder containing iteration images
+            output_filename (str): Output GIF filename
+            duration (int): Duration per frame in milliseconds (default: 500ms)
+            loop (int): Number of loops (0 = infinite loop)
 
-    Args:
-        image_folder (str): Path to folder containing iteration images
-        output_filename (str): Output GIF filename
-        duration (int): Duration per frame in milliseconds (default: 500ms)
-        loop (int): Number of loops (0 = infinite loop)
+        Returns:
+            str: Path to created GIF file, or None if failed
 
-    Returns:
-        str: Path to created GIF file, or None if failed
-
-    Example:
-        >>> create_optimization_gif('outputs/figures/run_20260208_120000')
-        'outputs/figures/run_20260208_120000/optimization.gif'
-    """
-    try:
-        from PIL import Image
-        from pathlib import Path
-    except ImportError:
-        print(
-            "⚠️ PIL (Pillow) is required to create GIFs. Install with: pip install Pillow"
-        )
-        return None
-
-    folder_path = Path(image_folder)
-    if not folder_path.exists():
-        print(f"⚠️ Folder not found: {image_folder}")
-        return None
-
-    # Find all PNG files matching iteration pattern
-    image_files = sorted(folder_path.glob("iteration_*.png"))
-
-    if not image_files:
-        print(f"⚠️ No iteration images found in {image_folder}")
-        return None
-
-    print(f"🎬 Creating GIF from {len(image_files)} images...")
-
-    # Load images
-    images = []
-    for img_path in image_files:
+        Example:
+            >>> StaticPlotter.create_gif('outputs/figures/run_20260208_120000')
+            'outputs/figures/run_20260208_120000/optimization.gif'
+        """
         try:
-            img = Image.open(img_path)
-            images.append(img)
-        except Exception as e:
-            print(f"⚠️ Failed to load {img_path.name}: {e}")
+            from PIL import Image
+            from pathlib import Path
+        except ImportError:
+            print(
+                "⚠️ PIL (Pillow) is required to create GIFs. Install with: pip install Pillow"
+            )
+            return None
 
-    if not images:
-        print("⚠️ No valid images loaded")
-        return None
+        folder_path = Path(image_folder)
+        if not folder_path.exists():
+            print(f"⚠️ Folder not found: {image_folder}")
+            return None
 
-    # Save as GIF
-    output_path = folder_path / output_filename
-    images[0].save(
-        output_path,
-        save_all=True,
-        append_images=images[1:],
-        duration=duration,
-        loop=loop,
-        optimize=False,
-    )
+        # Find all PNG files matching iteration pattern
+        image_files = sorted(folder_path.glob("iteration_*.png"))
 
-    print(f"✅ GIF created: {output_path}")
-    print(f"   Frames: {len(images)} | Duration: {duration}ms per frame")
-    return str(output_path)
+        if not image_files:
+            print(f"⚠️ No iteration images found in {image_folder}")
+            return None
+
+        print(f"🎬 Creating GIF from {len(image_files)} images...")
+
+        # Load images
+        images = []
+        for img_path in image_files:
+            try:
+                img = Image.open(img_path)
+                images.append(img)
+            except Exception as e:
+                print(f"⚠️ Failed to load {img_path.name}: {e}")
+
+        if not images:
+            print("⚠️ No valid images loaded")
+            return None
+
+        # Save as GIF
+        output_path = folder_path / output_filename
+        images[0].save(
+            output_path,
+            save_all=True,
+            append_images=images[1:],
+            duration=duration,
+            loop=loop,
+            optimize=False,
+        )
+
+        print(f"✅ GIF created: {output_path}")
+        print(f"   Frames: {len(images)} | Duration: {duration}ms per frame")
+        return str(output_path)

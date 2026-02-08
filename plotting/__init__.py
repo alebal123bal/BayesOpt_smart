@@ -7,14 +7,13 @@ static image exports using Matplotlib.
 
 # Import plotting utilities
 try:
-    from .pyqt_plotter import PyQtPlotter, StaticPlotter, create_optimization_gif
+    from .pyqt_plotter import PyQtPlotter, StaticPlotter
 
     PYQTGRAPH_AVAILABLE = True
 except ImportError:
     PYQTGRAPH_AVAILABLE = False
     PyQtPlotter = None
     StaticPlotter = None
-    create_optimization_gif = None
 
 # Export based on availability
 if PYQTGRAPH_AVAILABLE:
@@ -27,7 +26,6 @@ if PYQTGRAPH_AVAILABLE:
         "PlotterStatic",
         "PyQtPlotter",
         "StaticPlotter",
-        "create_optimization_gif",
     ]
 else:
     # No plotting available

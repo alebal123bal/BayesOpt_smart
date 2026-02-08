@@ -402,15 +402,13 @@ class GraphSaverCallback:
             return
 
         try:
-            from plotting import create_optimization_gif
-
-            create_optimization_gif(
+            self.plotter_class.create_gif(
                 image_folder=str(self.output_dir),
                 output_filename="optimization.gif",
                 duration=self.gif_duration,
                 loop=0,
             )
-        except ImportError:
-            print("⚠️ Could not import create_optimization_gif. GIF creation skipped.")
+        except AttributeError:
+            print("⚠️ Plotter class does not support GIF creation. Skipping.")
         except Exception as e:
             print(f"⚠️ Failed to create GIF: {e}")
