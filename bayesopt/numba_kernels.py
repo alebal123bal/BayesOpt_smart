@@ -17,6 +17,7 @@ from .config import (
     HYPERPARAM_FTOL,
     HYPERPARAM_MAXITER,
     HYPERPARAM_MIN_BOUND,
+    NUMBA_FLOAT_TYPE,
 )
 
 # Conditional imports
@@ -113,7 +114,7 @@ def compute_prior_mean(y_vector, n_evaluations, n_objectives):
         np.ndarray: Prior mean for each objective.
     """
 
-    prior_mean = np.zeros(n_objectives, dtype=np.float64)
+    prior_mean = np.zeros(n_objectives, dtype=NUMBA_FLOAT_TYPE)
     for obj_idx in range(n_objectives):
         prior_mean[obj_idx] = np.mean(y_vector[:n_evaluations, obj_idx])
     return prior_mean
@@ -133,7 +134,7 @@ def compute_prior_variance(y_vector, n_evaluations, n_objectives):
         np.ndarray: Prior variance for each objective.
     """
 
-    prior_variance = np.zeros(n_objectives, dtype=np.float64)
+    prior_variance = np.zeros(n_objectives, dtype=NUMBA_FLOAT_TYPE)
     for obj_idx in range(n_objectives):
         prior_variance[obj_idx] = np.var(y_vector[:n_evaluations, obj_idx])
     return prior_variance
@@ -183,7 +184,7 @@ def compute_mll(
     n_points = current_eval
 
     # Store per-objective MLL to avoid race conditions
-    mll_values = np.empty(n_objectives, dtype=np.float64)
+    mll_values = np.empty(n_objectives, dtype=NUMBA_FLOAT_TYPE)
 
     for obj_idx in prange(n_objectives):
         # Ensure contiguous for Cholesky speed
@@ -358,12 +359,12 @@ def invert_k(current_eval, kernel_matrix):
 
     # Allocate output array
     kernel_matrix_inv = np.zeros(
-        (n_objectives, current_eval, current_eval), dtype=np.float64
+        (n_objectives, current_eval, current_eval), dtype=NUMBA_FLOAT_TYPE
     )
 
     for obj_idx in range(n_objectives):
         # Extract kernel matrix slice and add jitter for numerical stability
-        K = np.zeros((current_eval, current_eval), dtype=np.float64)
+        K = np.zeros((current_eval, current_eval), dtype=NUMBA_FLOAT_TYPE)
         for i in range(current_eval):
             for j in range(current_eval):
                 K[i, j] = kernel_matrix[obj_idx, i, j]
@@ -494,7 +495,7 @@ def update_variance(
         intermediate = kernel_matrix_inv_c @ k_star_obj_c
 
         # Compute quadratic form without unsupported einsum or transposes
-        quadratic_form = np.empty(n_candidates, dtype=np.float64)
+        quadratic_form = np.empty(n_candidates, dtype=NUMBA_FLOAT_TYPE)
         for j in range(n_candidates):
             s = 0.0
             for i in range(current_eval):

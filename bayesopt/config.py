@@ -92,3 +92,6 @@ if DEBUG_MODE:
     print("🐛 DEBUG MODE - Numba disabled (config.py)")
 else:
     print("🚀 PRODUCTION MODE - Numba enabled (config.py)")
+
+# Float type for Numba-optimized functions
+NUMBA_FLOAT_TYPE = np.float64

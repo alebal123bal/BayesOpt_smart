@@ -17,6 +17,7 @@ from .config import (
     DEFAULT_BETA,
     DEFAULT_BATCH_SIZE,
     DEFAULT_INITIAL_SAMPLES,
+    NUMBA_FLOAT_TYPE,
 )
 
 # Import kernel functions
@@ -305,23 +306,23 @@ class BayesianOptimization:
         # If prior mean and variance are not provided, calculate them later from initial samples
         self.prior_mean = np.array(
             kwargs.get("prior_mean", [DEFAULT_PRIOR_MEAN] * n_objectives),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
         self.prior_variance = np.array(
             kwargs.get("prior_variance", [DEFAULT_PRIOR_VARIANCE] * n_objectives),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # If length_scales is not provided, set defaults
         self.length_scales = np.array(
             kwargs.get("length_scales", [DEFAULT_LENGTH_SCALE] * n_objectives),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # If betas is not provided, set defaults
         self.betas = np.array(
             kwargs.get("betas", [DEFAULT_BETA] * n_objectives),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # If batch_size is not provided, set default
@@ -343,54 +344,56 @@ class BayesianOptimization:
 
         # Preallocate the function evaluations
         self.x_vector = np.zeros((self.total_samples, self.dim))
-        self.y_vector = np.zeros((self.total_samples, n_objectives), dtype=np.float64)
+        self.y_vector = np.zeros(
+            (self.total_samples, n_objectives), dtype=NUMBA_FLOAT_TYPE
+        )
 
         # Preallocate the kernel matrices for each objective
         self.kernel_matrices = np.zeros(
             (self.n_objectives, self.total_samples, self.total_samples),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # Preallocate the kernel vector kstar for each objective
         self.k_star = np.zeros(
             (self.n_objectives, self.total_samples, len(self.input_space)),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # Preallocate the mean for each objective's Gaussian process
         self.mu_objectives = np.zeros(
             (n_objectives, len(self.input_space)),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # Preallocate the variance for each objective's Gaussian process
         self.variance_objectives = np.zeros(
             (n_objectives, len(self.input_space)),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # Preallocate the standardized mean for each objective
         self.std_mu_objectives = np.zeros(
             (n_objectives, len(self.input_space)),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # Preallocate the standardized variance for each objective
         self.std_variance_objectives = np.zeros(
             (n_objectives, len(self.input_space)),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # Preallocate the upper confidence bound acquisition function values for each objective
         self.ucb = np.zeros(
             (n_objectives, len(self.input_space)),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # Preallocate the acquisition function values for each point
         self.acquisition_values = np.zeros(
             len(self.input_space),
-            dtype=np.float64,
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # Initial guesses
