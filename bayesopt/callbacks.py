@@ -63,6 +63,9 @@ class ProgressLogger:
 
         # Initialize log file with header
         if self.log_file:
+            # If not present, create the directory
+            log_path = Path(self.log_file).parent
+            log_path.mkdir(parents=True, exist_ok=True)
             with open(self.log_file, "w", encoding="utf-8") as f:
                 f.write("iteration,n_evaluations,time_total\n")
 
