@@ -109,7 +109,7 @@ class ProgressLogger:
             print(f"  └─ Iter {state['iteration']}: Evaluated {batch_size} point(s)")
             for i in range(batch_start, n_evaluations):
                 x_str = np.array2string(
-                    x_values[i], precision=1, suppress_small=True, separator=","
+                    x_values[i], precision=2, suppress_small=True, separator=","
                 )
                 y_str = np.array2string(
                     y_values[i], precision=4, suppress_small=True, separator=","
@@ -121,7 +121,7 @@ class ProgressLogger:
             for obj_idx in range(n_objectives):
                 x_str = np.array2string(
                     self.best_x_per_objective[obj_idx],
-                    precision=1,
+                    precision=2,
                     suppress_small=True,
                     separator=",",
                 )
