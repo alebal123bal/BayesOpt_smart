@@ -69,7 +69,7 @@ def initialize_lhs_integer(x_vector, y_vector, bounds, function, n_samples=8):
         int: Number of evaluations performed (equals n_samples).
     """
     dim = len(bounds)
-    samples = np.empty((n_samples, dim), dtype=np.int32)
+    samples = np.empty((n_samples, dim), dtype=NUMBA_FLOAT_TYPE)
 
     for d in range(dim):
         # Create a random permutation of bin indices

@@ -343,9 +343,13 @@ class BayesianOptimization:
         self.total_samples = self.initial_samples + self.n_iterations * self.batch_size
 
         # Preallocate the function evaluations
-        self.x_vector = np.zeros((self.total_samples, self.dim))
+        self.x_vector = np.zeros(
+            (self.total_samples, self.dim),
+            dtype=NUMBA_FLOAT_TYPE,
+        )
         self.y_vector = np.zeros(
-            (self.total_samples, n_objectives), dtype=NUMBA_FLOAT_TYPE
+            (self.total_samples, n_objectives),
+            dtype=NUMBA_FLOAT_TYPE,
         )
 
         # Preallocate the kernel matrices for each objective
