@@ -245,65 +245,6 @@ class PerformanceMonitor:
         )
 
 
-class ConvergenceChecker:
-    """Callback that monitors convergence criteria."""
-
-    def __init__(
-        self, tolerance: float = 1e-4, patience: int = 3, verbose: bool = True
-    ):
-        """
-        Initialize convergence checker.
-
-        Args:
-            tolerance: Minimum improvement threshold per objective
-            patience: Number of iterations without improvement before signaling
-            verbose: Whether to print convergence messages
-        """
-        self.tolerance = tolerance
-        self.patience = patience
-        self.verbose = verbose
-        self.prev_best_per_obj = None
-        self.no_improvement_counts = None
-        self.converged = False
-
-    def __call__(self, state):
-        """Check for convergence on each objective."""
-        y_values = state["y_vector"]
-        n_objectives = y_values.shape[1]
-
-        # Initialize tracking on first iteration
-        if self.prev_best_per_obj is None:
-            self.prev_best_per_obj = np.full(n_objectives, float("inf"))
-            self.no_improvement_counts = np.zeros(n_objectives, dtype=int)
-
-        # Check each objective separately
-        for obj_idx in range(n_objectives):
-            current_best = np.min(y_values[:, obj_idx])
-            improvement = self.prev_best_per_obj[obj_idx] - current_best
-
-            if improvement < self.tolerance:
-                self.no_improvement_counts[obj_idx] += 1
-            else:
-                self.no_improvement_counts[obj_idx] = 0
-
-            self.prev_best_per_obj[obj_idx] = current_best
-
-        # Signal convergence if all objectives have stalled
-        if np.all(self.no_improvement_counts >= self.patience) and not self.converged:
-            self.converged = True
-            if self.verbose:
-                print(
-                    f"  ⚠️  Convergence detected: "
-                    f"no improvement > {self.tolerance} for {self.patience} iterations (all objectives)"
-                )
-
-    def reset(self):
-        """Reset convergence checker state."""
-        self.prev_best_per_obj = None
-        self.no_improvement_counts = None
-        self.converged = False
-
-
 class GraphSaverCallback:
     """
     Callback that saves optimization plots to disk at each iteration.

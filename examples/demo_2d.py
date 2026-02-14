@@ -8,21 +8,27 @@ on a 2D toy function with visualization using the callback architecture.
 import sys
 import time
 from pathlib import Path
+import numpy as np
 
 # Add parent directory to path to import modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import numpy as np
 from bayesopt import BayesianOptimization
-from bayesopt.callbacks import PlotterCallback, ProgressLogger, GraphSaverCallback
+from bayesopt.callbacks import (
+    PlotterCallback,
+    ProgressLogger,
+    GraphSaverCallback,
+    PerformanceMonitor,
+    OptimizationLogger,
+)
 from examples.benchmark_functions import toy_function
 from plotting import PyQtPlotter, StaticPlotter
 
 
 def main():
     """Run 2D optimization demo with callback architecture."""
-    X_MAX = 300
-    Y_MAX = 300
+    X_MAX = 500
+    Y_MAX = 500
 
     # Define bounds for 2D optimization
     bounds = [
@@ -38,9 +44,15 @@ def main():
 
     # Setup callbacks
     plotter_callback = PlotterCallback(plotter)
+
     progress_logger = ProgressLogger(
         log_file="outputs/logs/optimization.log", verbose=True
     )
+
+    performance_logger = PerformanceMonitor()
+
+    optimization_logger = OptimizationLogger()
+
     graph_saver = GraphSaverCallback(
         plotter_class=StaticPlotter,
         bounds=bounds,
@@ -64,7 +76,9 @@ def main():
         callbacks=[
             # plotter_callback,
             progress_logger,
-            graph_saver,
+            optimization_logger,
+            performance_logger,
+            # graph_saver,
         ],
     )
 
@@ -79,6 +93,9 @@ def main():
 
     # Analyze results
     optimizer.pareto_analysis()
+
+    # Log performance summary
+    performance_logger.summary()
 
     # Keep the plot window open
     plotter.show()

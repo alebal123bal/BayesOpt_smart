@@ -37,7 +37,6 @@ from .callbacks import (
     ProgressLogger,
     OptimizationLogger,
     PerformanceMonitor,
-    ConvergenceChecker,
 )
 
 # Utility functions
@@ -79,7 +78,6 @@ try:
         "ProgressLogger",
         "OptimizationLogger",
         "PerformanceMonitor",
-        "ConvergenceChecker",
         # Utilities
         "select_next_batch",
         "is_pareto_efficient",
