@@ -116,7 +116,9 @@ def compute_prior_mean(y_vector, n_evaluations, n_objectives):
 
     prior_mean = np.zeros(n_objectives, dtype=NUMBA_FLOAT_TYPE)
     for obj_idx in range(n_objectives):
-        prior_mean[obj_idx] = np.mean(y_vector[:n_evaluations, obj_idx])
+        prior_mean[obj_idx] = NUMBA_FLOAT_TYPE(
+            np.mean(y_vector[:n_evaluations, obj_idx])
+        )
     return prior_mean
 
 
@@ -136,7 +138,9 @@ def compute_prior_variance(y_vector, n_evaluations, n_objectives):
 
     prior_variance = np.zeros(n_objectives, dtype=NUMBA_FLOAT_TYPE)
     for obj_idx in range(n_objectives):
-        prior_variance[obj_idx] = np.var(y_vector[:n_evaluations, obj_idx])
+        prior_variance[obj_idx] = NUMBA_FLOAT_TYPE(
+            np.var(y_vector[:n_evaluations, obj_idx])
+        )
     return prior_variance
 
 
@@ -188,30 +192,38 @@ def compute_mll(
 
     for obj_idx in prange(n_objectives):
         # Ensure contiguous for Cholesky speed
-        K = np.ascontiguousarray(
+        k = (
             kernel_matrix[obj_idx, :n_points, :n_points] / prior_variance[obj_idx]
-        )
+        ).astype(NUMBA_FLOAT_TYPE)
+        k = np.ascontiguousarray(k)
 
         # Center and normalize outputs
-        y_centered = np.ascontiguousarray(
-            y_vector[:n_points, obj_idx] - prior_mean[obj_idx]
+        y_centered = (y_vector[:n_points, obj_idx] - prior_mean[obj_idx]).astype(
+            NUMBA_FLOAT_TYPE
         )
+        y_centered = np.ascontiguousarray(y_centered)
+
         std_y = np.std(y_centered)
         if std_y > 0.0:
             y_centered /= std_y
 
-        # Cholesky decomposition
-        L = np.linalg.cholesky(K + CHOLESKY_JITTER * np.eye(n_points))
+        # Cholesky decomposition (cast jitter to avoid upcast)
+        jitter_matrix = NUMBA_FLOAT_TYPE(CHOLESKY_JITTER) * np.eye(
+            n_points, dtype=NUMBA_FLOAT_TYPE
+        )
+        l = np.linalg.cholesky(k + jitter_matrix)
+
+        intermediate = np.linalg.solve(l, y_centered)
 
         # Solve alpha = K^{-1} y_centered
-        alpha = np.linalg.solve(L.T, np.linalg.solve(L, y_centered))
+        alpha = np.linalg.solve(l.T, intermediate)
 
         # Term 1: data fit
         data_fit_term = -0.5 * np.dot(y_centered, alpha)
 
         # Term 2: complexity penalty
-        logdetK = 2.0 * np.sum(np.log(np.diag(L)))
-        complexity_term = -0.5 * logdetK
+        log_det_k = 2.0 * np.sum(np.log(np.diag(l)))
+        complexity_term = -0.5 * log_det_k
 
         # Term 3: constant penalty
         constant_term = -0.5 * n_points * np.log(2.0 * np.pi)
@@ -275,18 +287,32 @@ def optimize_hyperparams_mll(
 
         return -mll
 
-    # Run Powell optimization (derivative-free)
-    optim_result = minimize(
-        objective,
-        initial_guess,
-        method=HYPERPARAM_METHOD,
-        bounds=bounds,
-        options={
-            "xtol": HYPERPARAM_XTOL,
-            "ftol": HYPERPARAM_FTOL,
-            "maxiter": HYPERPARAM_MAXITER,
-        },
-    )
+    # Use COBYLA for float32 (more robust to lower precision, handles bounds well)
+    if NUMBA_FLOAT_TYPE == np.float32:
+        optim_result = minimize(
+            objective,
+            initial_guess,
+            method="COBYLA",
+            bounds=bounds,
+            options={
+                "maxiter": HYPERPARAM_MAXITER,
+                "rhobeg": 1.0,  # Initial step size
+                "tol": HYPERPARAM_FTOL * 10,  # Relaxed tolerance for float32
+            },
+        )
+    else:
+        # Run Powell optimization (derivative-free) for float64
+        optim_result = minimize(
+            objective,
+            initial_guess,
+            method=HYPERPARAM_METHOD,
+            bounds=bounds,
+            options={
+                "xtol": HYPERPARAM_XTOL,
+                "ftol": HYPERPARAM_FTOL,
+                "maxiter": HYPERPARAM_MAXITER,
+            },
+        )
 
     # Update hyperparameters in place
     length_scales[:] = optim_result.x[:n_objectives]

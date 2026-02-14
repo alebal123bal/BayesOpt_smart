@@ -50,14 +50,20 @@ DEFAULT_INITIAL_SAMPLES = 3
 # NUMERICAL STABILITY
 # =============================================================================
 
-# Jitter for numerical stability in kernel matrix inversion
-KERNEL_JITTER = 1e-6
+# Float type for Numba-optimized functions
+NUMBA_FLOAT_TYPE = np.float64
 
-# Small epsilon for numerical stability in Cholesky decomposition
-CHOLESKY_JITTER = 1e-8
-
-# Minimum variance to prevent numerical issues
-MIN_VARIANCE = 1e-10
+# Adjust jitter values based on precision
+if NUMBA_FLOAT_TYPE == np.float32:
+    # Float32 needs much larger jitter due to ~7 decimal digit precision
+    KERNEL_JITTER = 1e-3
+    CHOLESKY_JITTER = 1e-4
+    MIN_VARIANCE = 1e-6
+else:
+    # Float64 has ~15 decimal digit precision
+    KERNEL_JITTER = 1e-6
+    CHOLESKY_JITTER = 1e-8
+    MIN_VARIANCE = 1e-10
 
 # =============================================================================
 # OPTIMIZATION SETTINGS
@@ -92,6 +98,3 @@ if DEBUG_MODE:
     print("🐛 DEBUG MODE - Numba disabled (config.py)")
 else:
     print("🚀 PRODUCTION MODE - Numba enabled (config.py)")
-
-# Float type for Numba-optimized functions
-NUMBA_FLOAT_TYPE = np.float64
