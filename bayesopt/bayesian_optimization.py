@@ -305,19 +305,23 @@ class BayesianOptimization:
         # If prior mean and variance are not provided, calculate them later from initial samples
         self.prior_mean = np.array(
             kwargs.get("prior_mean", [DEFAULT_PRIOR_MEAN] * n_objectives),
+            dtype=np.float64,
         )
         self.prior_variance = np.array(
             kwargs.get("prior_variance", [DEFAULT_PRIOR_VARIANCE] * n_objectives),
+            dtype=np.float64,
         )
 
         # If length_scales is not provided, set defaults
         self.length_scales = np.array(
             kwargs.get("length_scales", [DEFAULT_LENGTH_SCALE] * n_objectives),
+            dtype=np.float64,
         )
 
         # If betas is not provided, set defaults
         self.betas = np.array(
             kwargs.get("betas", [DEFAULT_BETA] * n_objectives),
+            dtype=np.float64,
         )
 
         # If batch_size is not provided, set default
@@ -339,9 +343,7 @@ class BayesianOptimization:
 
         # Preallocate the function evaluations
         self.x_vector = np.zeros((self.total_samples, self.dim))
-        self.y_vector = np.zeros(
-            (self.total_samples, n_objectives)
-        )  # Multiple objectives
+        self.y_vector = np.zeros((self.total_samples, n_objectives), dtype=np.float64)
 
         # Preallocate the kernel matrices for each objective
         self.kernel_matrices = np.zeros(
@@ -357,35 +359,45 @@ class BayesianOptimization:
 
         # Preallocate the mean for each objective's Gaussian process
         self.mu_objectives = np.zeros(
-            (n_objectives, len(self.input_space)), dtype=np.float64
+            (n_objectives, len(self.input_space)),
+            dtype=np.float64,
         )
 
         # Preallocate the variance for each objective's Gaussian process
         self.variance_objectives = np.zeros(
-            (n_objectives, len(self.input_space)), dtype=np.float64
+            (n_objectives, len(self.input_space)),
+            dtype=np.float64,
         )
 
         # Preallocate the standardized mean for each objective
         self.std_mu_objectives = np.zeros(
-            (n_objectives, len(self.input_space)), dtype=np.float64
+            (n_objectives, len(self.input_space)),
+            dtype=np.float64,
         )
 
         # Preallocate the standardized variance for each objective
         self.std_variance_objectives = np.zeros(
-            (n_objectives, len(self.input_space)), dtype=np.float64
+            (n_objectives, len(self.input_space)),
+            dtype=np.float64,
         )
 
         # Preallocate the upper confidence bound acquisition function values for each objective
-        self.ucb = np.zeros((n_objectives, len(self.input_space)), dtype=np.float64)
+        self.ucb = np.zeros(
+            (n_objectives, len(self.input_space)),
+            dtype=np.float64,
+        )
 
         # Preallocate the acquisition function values for each point
-        self.acquisition_values = np.zeros(len(self.input_space), dtype=np.float64)
+        self.acquisition_values = np.zeros(
+            len(self.input_space),
+            dtype=np.float64,
+        )
 
         # Initial guesses
         self.n_evaluations = initialize_lhs_integer(
             x_vector=self.x_vector,
             y_vector=self.y_vector,
-            bounds=np.array(self.bounds, dtype=np.int32),
+            bounds=np.array(self.bounds, dtype=np.int64),
             function=self.function,
             n_samples=self.initial_samples,
         )
