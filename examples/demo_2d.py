@@ -27,8 +27,8 @@ from plotting import PyQtPlotter, StaticPlotter
 
 def main():
     """Run 2D optimization demo with callback architecture."""
-    X_MAX = 500
-    Y_MAX = 500
+    X_MAX = 300
+    Y_MAX = 300
 
     # Define bounds for 2D optimization
     bounds = [
